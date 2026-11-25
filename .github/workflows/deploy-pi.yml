@@ -1,0 +1,110 @@
+name: Test and deploy SportBoss
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Test SportBoss
+        run: |
+          npm test
+          bash -n tools/deploy-pi.sh
+          docker compose --env-file .env.example config --quiet
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.SPORTBOSS_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: sportboss-raspberry-pi
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PI_HOST: ${{ vars.SPORTBOSS_PI_HOST }}
+      PI_USER: ${{ vars.SPORTBOSS_PI_USER }}
+      PI_SSH_PORT: ${{ vars.SPORTBOSS_PI_SSH_PORT || '22' }}
+      COMPOSE_PROJECT: ${{ vars.SPORTBOSS_COMPOSE_PROJECT || 'sportboss' }}
+    steps:
+      - name: Check that this is still the latest main commit
+        id: branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$latest_sha" == "$GITHUB_SHA" ]]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer main commit superseded this run.'
+          fi
+
+      - name: Check out the tested commit
+        if: steps.branch.outputs.deploy == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Connect to the tailnet
+        if: steps.branch.outputs.deploy == 'true'
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ vars.SPORTBOSS_TS_CLIENT_ID }}
+          audience: ${{ vars.SPORTBOSS_TS_AUDIENCE }}
+          tags: tag:sportboss-ci
+          ping: ${{ vars.SPORTBOSS_PI_HOST }}
+
+      - name: Deploy the tested source on the Pi
+        if: steps.branch.outputs.deploy == 'true'
+        shell: bash
+        env:
+          SSH_KEY: ${{ secrets.SPORTBOSS_PI_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SPORTBOSS_PI_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PI_HOST" =~ ^100\.([6-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}$ ||
+                ! "$PI_USER" =~ ^[a-z_][a-z0-9_-]*$ || "$PI_USER" == root ||
+                ! "$PI_SSH_PORT" =~ ^[0-9]{1,5}$ || ! "$COMPOSE_PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ||
+                ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ || -z "$SSH_KEY" || -z "$KNOWN_HOSTS" ]]; then
+            echo "::error::Check the Pi address, user, port, Compose project name and SSH secrets."
+            exit 1
+          fi
+
+          umask 077
+          scratch=$(mktemp -d)
+          trap 'rm -rf -- "$scratch"' EXIT
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$scratch/key"
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > "$scratch/known_hosts"
+
+          git archive --format=tar.gz --output="$scratch/source.tar.gz" "$GITHUB_SHA" -- \
+            .dockerignore Dockerfile compose.yaml package.json catalog.json server.mjs reminders.mjs \
+            lib/ public/ tools/backup.mjs
+
+          # Pass the script as a command so SSH stdin carries only the source archive.
+          deploy_script=$(base64 -w 0 tools/deploy-pi.sh)
+          ssh -T -p "$PI_SSH_PORT" -i "$scratch/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$scratch/known_hosts" -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
+            "$PI_USER@$PI_HOST" "bash -c \"\$(printf %s '$deploy_script' | base64 -d)\" -- '$GITHUB_SHA' '$COMPOSE_PROJECT'" \
+            < "$scratch/source.tar.gz"

@@ -6,6 +6,7 @@ import { extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { byId, catalog, equipment, kinds, prescribe } from './lib/catalog.mjs';
 import { candidates, durationOptions, selectPlan, swapOptions } from './lib/planner.mjs';
+import { startReminders } from './reminders.mjs';
 import {
   completedWorkouts, describeWorkout, exerciseTrend, getSettings, openDatabase,
   overview, pendingWorkout, saveSettings, summary, transaction, workoutById,
@@ -193,11 +194,25 @@ const mimeTypes = {
   '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg',
   '.woff2': 'font/woff2', '.svg': 'image/svg+xml',
 };
-export function createApp({ dataDir, username = 'form', password, typesafeKey = '' } = {}) {
+export function createApp({ dataDir, username = 'form', password, typesafeKey = '', reminderEnv } = {}) {
   const db = openDatabase(dataDir);
   const credential = password ? digest('Basic ' + Buffer.from(username + ':' + password).toString('base64')) : null;
   const server = createServer((request, response) => serve(db, request, response, credential, typesafeKey));
-  server.once('close', () => db.close());
+  let stopReminders;
+  if (reminderEnv) {
+    server.once('listening', () => {
+      try {
+        stopReminders = startReminders(db, reminderEnv);
+      } catch (error) {
+        console.error('Telegram reminders disabled:', error.message);
+      }
+    });
+  }
+  server.once('close', async () => {
+    const pending = stopReminders?.();
+    if (pending) await pending;
+    db.close();
+  });
   return server;
 }
 async function serve(db, request, response, credential, typesafeKey) {
@@ -239,8 +254,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!password && !['127.0.0.1', '::1', 'localhost'].includes(host) && process.env.ALLOW_UNAUTHENTICATED !== '1') {
     throw new Error('A non-loopback bind requires APP_PASSWORD or ALLOW_UNAUTHENTICATED=1.');
   }
-  const server = createApp({ username: process.env.APP_USER, password, typesafeKey: process.env.TYPESAFE_API_KEY });
-  server.listen(Number(process.env.PORT || 8080), host, () => {
+  const server = createApp({
+    username: process.env.APP_USER, password, typesafeKey: process.env.TYPESAFE_API_KEY,
+    reminderEnv: process.env,
+  });
+  server.listen(Number(process.env.PORT || 8787), host, () => {
     console.log('SportBoss is ready at http://' + host + ':' + server.address().port + ' (data: ' + resolve(process.env.DATA_DIR || 'data') + ')');
   });
 }

@@ -1,5 +1,3 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openDatabase, localTime, transaction } from './lib/storage.mjs';
 
@@ -59,15 +57,33 @@ export async function sendDueReminder(db, { token, chat, appUrl, time, days }, {
     console.error('Telegram reminder delivery could not be confirmed.');
   }
 }
+export function startReminders(db, env) {
+  const settings = configuration(env);
+  if (!settings) return;
+
+  let timer;
+  let pending;
+  let stopped = false;
+  function poll() {
+    pending = sendDueReminder(db, settings)
+      .catch(error => console.error('Telegram reminder check failed:', error))
+      .finally(() => {
+        pending = undefined;
+        if (!stopped) timer = setTimeout(poll, 20000);
+      });
+  }
+  console.log('Telegram reminders enabled in Asia/Jerusalem.');
+  poll();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    return pending;
+  };
+}
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const settings = configuration(process.env);
-  const location = process.env.DATA_DIR || 'data';
-  const heartbeat = join(location, 'reminder-heartbeat');
-  const db = openDatabase(location);
-  console.log(settings ? 'Telegram reminders enabled in Asia/Jerusalem.' : 'Telegram reminders are idle until configured.');
-  while (true) {
-    writeFileSync(heartbeat, String(Date.now()));
-    if (settings) await sendDueReminder(db, settings);
-    await new Promise(resolve => setTimeout(resolve, 20000));
+  const db = openDatabase();
+  if (!startReminders(db, process.env)) {
+    db.close();
+    console.log('Telegram reminders are idle until configured.');
   }
 }
