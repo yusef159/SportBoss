@@ -1,0 +1,562 @@
+[
+    {
+        "id":  "seated-chest-press",
+        "name":  "Seated Chest Press",
+        "image":  "/exercises/seated-chest-press.jpg"
+    },
+    {
+        "id":  "pec-deck-butterfly-fly",
+        "name":  "Pec Deck / Butterfly Fly",
+        "image":  "/exercises/pec-deck-butterfly-fly.jpg"
+    },
+    {
+        "id":  "flat-dumbbell-bench-press",
+        "name":  "Flat Dumbbell Bench Press",
+        "image":  "/exercises/flat-dumbbell-bench-press.jpg"
+    },
+    {
+        "id":  "incline-dumbbell-bench-press",
+        "name":  "Incline Dumbbell Bench Press",
+        "image":  "/exercises/incline-dumbbell-bench-press.jpg"
+    },
+    {
+        "id":  "decline-dumbbell-bench-press",
+        "name":  "Decline Dumbbell Bench Press",
+        "image":  "/exercises/decline-dumbbell-bench-press.jpg"
+    },
+    {
+        "id":  "flat-dumbbell-chest-fly",
+        "name":  "Flat Dumbbell Chest Fly",
+        "image":  "/exercises/flat-dumbbell-chest-fly.jpg"
+    },
+    {
+        "id":  "incline-dumbbell-chest-fly",
+        "name":  "Incline Dumbbell Chest Fly",
+        "image":  "/exercises/incline-dumbbell-chest-fly.jpg"
+    },
+    {
+        "id":  "dumbbell-squeeze-press",
+        "name":  "Dumbbell Squeeze Press",
+        "image":  "/exercises/dumbbell-squeeze-press.jpg"
+    },
+    {
+        "id":  "neutral-grip-dumbbell-press",
+        "name":  "Neutral-Grip Dumbbell Press",
+        "image":  "/exercises/neutral-grip-dumbbell-press.jpg"
+    },
+    {
+        "id":  "alternating-dumbbell-bench-press",
+        "name":  "Alternating Dumbbell Bench Press",
+        "image":  "/exercises/alternating-dumbbell-bench-press.jpg"
+    },
+    {
+        "id":  "single-arm-dumbbell-bench-press",
+        "name":  "Single-Arm Dumbbell Bench Press",
+        "image":  "/exercises/single-arm-dumbbell-bench-press.jpg"
+    },
+    {
+        "id":  "dumbbell-pullover",
+        "name":  "Dumbbell Pullover",
+        "image":  "/exercises/dumbbell-pullover.jpg"
+    },
+    {
+        "id":  "standard-push-up",
+        "name":  "Standard Push-Up",
+        "image":  "/exercises/standard-push-up.jpg"
+    },
+    {
+        "id":  "wide-grip-push-up",
+        "name":  "Wide-Grip Push-Up",
+        "image":  "/exercises/wide-grip-push-up.jpg"
+    },
+    {
+        "id":  "close-grip-push-up",
+        "name":  "Close-Grip Push-Up",
+        "image":  "/exercises/close-grip-push-up.jpg"
+    },
+    {
+        "id":  "incline-push-up",
+        "name":  "Incline Push-Up",
+        "image":  "/exercises/incline-push-up.jpg"
+    },
+    {
+        "id":  "wide-grip-lat-pulldown",
+        "name":  "Wide-Grip Lat Pulldown",
+        "image":  "/exercises/wide-grip-lat-pulldown.jpg"
+    },
+    {
+        "id":  "close-grip-lat-pulldown",
+        "name":  "Close-Grip Lat Pulldown",
+        "image":  "/exercises/close-grip-lat-pulldown.jpg"
+    },
+    {
+        "id":  "reverse-grip-lat-pulldown",
+        "name":  "Reverse-Grip Lat Pulldown",
+        "image":  "/exercises/reverse-grip-lat-pulldown.jpg"
+    },
+    {
+        "id":  "straight-arm-cable-pulldown",
+        "name":  "Straight-Arm Cable Pulldown",
+        "image":  "/exercises/straight-arm-cable-pulldown.jpg"
+    },
+    {
+        "id":  "seated-low-cable-row",
+        "name":  "Seated Low Cable Row",
+        "image":  "/exercises/seated-low-cable-row.jpg"
+    },
+    {
+        "id":  "one-arm-dumbbell-row",
+        "name":  "One-Arm Dumbbell Row",
+        "image":  "/exercises/one-arm-dumbbell-row.jpg"
+    },
+    {
+        "id":  "bent-over-dumbbell-row",
+        "name":  "Bent-Over Dumbbell Row",
+        "image":  "/exercises/bent-over-dumbbell-row.jpg"
+    },
+    {
+        "id":  "chest-supported-dumbbell-row",
+        "name":  "Chest-Supported Dumbbell Row",
+        "image":  "/exercises/chest-supported-dumbbell-row.jpg"
+    },
+    {
+        "id":  "underhand-dumbbell-row",
+        "name":  "Underhand Dumbbell Row",
+        "image":  "/exercises/underhand-dumbbell-row.jpg"
+    },
+    {
+        "id":  "alternating-dumbbell-row",
+        "name":  "Alternating Dumbbell Row",
+        "image":  "/exercises/alternating-dumbbell-row.jpg"
+    },
+    {
+        "id":  "dumbbell-shrugs",
+        "name":  "Dumbbell Shrugs",
+        "image":  "/exercises/dumbbell-shrugs.jpg"
+    },
+    {
+        "id":  "incline-dumbbell-shrugs",
+        "name":  "Incline Dumbbell Shrugs",
+        "image":  "/exercises/incline-dumbbell-shrugs.jpg"
+    },
+    {
+        "id":  "bent-over-reverse-fly",
+        "name":  "Bent-Over Reverse Fly",
+        "image":  "/exercises/bent-over-reverse-fly.jpg"
+    },
+    {
+        "id":  "prone-y-t-w-raises",
+        "name":  "Prone Y-T-W Raises",
+        "image":  "/exercises/prone-y-t-w-raises.jpg"
+    },
+    {
+        "id":  "cable-front-raise",
+        "name":  "Cable Front Raise",
+        "image":  "/exercises/cable-front-raise.jpg"
+    },
+    {
+        "id":  "cable-upright-row",
+        "name":  "Cable Upright Row",
+        "image":  "/exercises/cable-upright-row.jpg"
+    },
+    {
+        "id":  "cable-rear-delt-raise",
+        "name":  "Cable Rear-Delt Raise",
+        "image":  "/exercises/cable-rear-delt-raise.jpg"
+    },
+    {
+        "id":  "seated-dumbbell-shoulder-press",
+        "name":  "Seated Dumbbell Shoulder Press",
+        "image":  "/exercises/seated-dumbbell-shoulder-press.jpg"
+    },
+    {
+        "id":  "arnold-press",
+        "name":  "Arnold Press",
+        "image":  "/exercises/arnold-press.jpg"
+    },
+    {
+        "id":  "neutral-grip-shoulder-press",
+        "name":  "Neutral-Grip Shoulder Press",
+        "image":  "/exercises/neutral-grip-shoulder-press.jpg"
+    },
+    {
+        "id":  "single-arm-overhead-press",
+        "name":  "Single-Arm Overhead Press",
+        "image":  "/exercises/single-arm-overhead-press.jpg"
+    },
+    {
+        "id":  "dumbbell-lateral-raise",
+        "name":  "Dumbbell Lateral Raise",
+        "image":  "/exercises/dumbbell-lateral-raise.jpg"
+    },
+    {
+        "id":  "seated-dumbbell-lateral-raise",
+        "name":  "Seated Dumbbell Lateral Raise",
+        "image":  "/exercises/seated-dumbbell-lateral-raise.jpg"
+    },
+    {
+        "id":  "dumbbell-front-raise",
+        "name":  "Dumbbell Front Raise",
+        "image":  "/exercises/dumbbell-front-raise.jpg"
+    },
+    {
+        "id":  "alternating-front-raise",
+        "name":  "Alternating Front Raise",
+        "image":  "/exercises/alternating-front-raise.jpg"
+    },
+    {
+        "id":  "dumbbell-reverse-fly",
+        "name":  "Dumbbell Reverse Fly",
+        "image":  "/exercises/dumbbell-reverse-fly.jpg"
+    },
+    {
+        "id":  "incline-reverse-fly",
+        "name":  "Incline Reverse Fly",
+        "image":  "/exercises/incline-reverse-fly.jpg"
+    },
+    {
+        "id":  "dumbbell-scaption-raise",
+        "name":  "Dumbbell Scaption Raise",
+        "image":  "/exercises/dumbbell-scaption-raise.jpg"
+    },
+    {
+        "id":  "standing-cable-biceps-curl",
+        "name":  "Standing Cable Biceps Curl",
+        "image":  "/exercises/standing-cable-biceps-curl.jpg"
+    },
+    {
+        "id":  "cable-preacher-curl",
+        "name":  "Cable Preacher Curl",
+        "image":  "/exercises/cable-preacher-curl.jpg"
+    },
+    {
+        "id":  "standing-dumbbell-biceps-curl",
+        "name":  "Standing Dumbbell Biceps Curl",
+        "image":  "/exercises/standing-dumbbell-biceps-curl.jpg"
+    },
+    {
+        "id":  "alternating-dumbbell-curl",
+        "name":  "Alternating Dumbbell Curl",
+        "image":  "/exercises/alternating-dumbbell-curl.jpg"
+    },
+    {
+        "id":  "seated-dumbbell-curl",
+        "name":  "Seated Dumbbell Curl",
+        "image":  "/exercises/seated-dumbbell-curl.jpg"
+    },
+    {
+        "id":  "hammer-curl",
+        "name":  "Hammer Curl",
+        "image":  "/exercises/hammer-curl.jpg"
+    },
+    {
+        "id":  "cross-body-hammer-curl",
+        "name":  "Cross-Body Hammer Curl",
+        "image":  "/exercises/cross-body-hammer-curl.jpg"
+    },
+    {
+        "id":  "incline-dumbbell-curl",
+        "name":  "Incline Dumbbell Curl",
+        "image":  "/exercises/incline-dumbbell-curl.jpg"
+    },
+    {
+        "id":  "concentration-curl",
+        "name":  "Concentration Curl",
+        "image":  "/exercises/concentration-curl.jpg"
+    },
+    {
+        "id":  "zottman-curl",
+        "name":  "Zottman Curl",
+        "image":  "/exercises/zottman-curl.jpg"
+    },
+    {
+        "id":  "reverse-dumbbell-curl",
+        "name":  "Reverse Dumbbell Curl",
+        "image":  "/exercises/reverse-dumbbell-curl.jpg"
+    },
+    {
+        "id":  "spider-curl",
+        "name":  "Spider Curl",
+        "image":  "/exercises/spider-curl.jpg"
+    },
+    {
+        "id":  "cable-triceps-pushdown",
+        "name":  "Cable Triceps Pushdown",
+        "image":  "/exercises/cable-triceps-pushdown.jpg"
+    },
+    {
+        "id":  "reverse-grip-triceps-pushdown",
+        "name":  "Reverse-Grip Triceps Pushdown",
+        "image":  "/exercises/reverse-grip-triceps-pushdown.jpg"
+    },
+    {
+        "id":  "overhead-cable-triceps-extension",
+        "name":  "Overhead Cable Triceps Extension",
+        "image":  "/exercises/overhead-cable-triceps-extension.jpg"
+    },
+    {
+        "id":  "standing-dumbbell-overhead-extension",
+        "name":  "Standing Dumbbell Overhead Extension",
+        "image":  "/exercises/standing-dumbbell-overhead-extension.jpg"
+    },
+    {
+        "id":  "dumbbell-skull-crusher",
+        "name":  "Dumbbell Skull Crusher",
+        "image":  "/exercises/dumbbell-skull-crusher.jpg"
+    },
+    {
+        "id":  "dumbbell-triceps-kickback",
+        "name":  "Dumbbell Triceps Kickback",
+        "image":  "/exercises/dumbbell-triceps-kickback.jpg"
+    },
+    {
+        "id":  "close-grip-dumbbell-press",
+        "name":  "Close-Grip Dumbbell Press",
+        "image":  "/exercises/close-grip-dumbbell-press.jpg"
+    },
+    {
+        "id":  "dumbbell-tate-press",
+        "name":  "Dumbbell Tate Press",
+        "image":  "/exercises/dumbbell-tate-press.jpg"
+    },
+    {
+        "id":  "diamond-push-up",
+        "name":  "Diamond Push-Up",
+        "image":  "/exercises/diamond-push-up.jpg"
+    },
+    {
+        "id":  "seated-leg-extension",
+        "name":  "Seated Leg Extension",
+        "image":  "/exercises/seated-leg-extension.jpg"
+    },
+    {
+        "id":  "leg-curl",
+        "name":  "Leg Curl",
+        "image":  "/exercises/leg-curl.jpg"
+    },
+    {
+        "id":  "goblet-squat",
+        "name":  "Goblet Squat",
+        "image":  "/exercises/goblet-squat.jpg"
+    },
+    {
+        "id":  "dumbbell-squat",
+        "name":  "Dumbbell Squat",
+        "image":  "/exercises/dumbbell-squat.jpg"
+    },
+    {
+        "id":  "dumbbell-front-squat",
+        "name":  "Dumbbell Front Squat",
+        "image":  "/exercises/dumbbell-front-squat.jpg"
+    },
+    {
+        "id":  "sumo-dumbbell-squat",
+        "name":  "Sumo Dumbbell Squat",
+        "image":  "/exercises/sumo-dumbbell-squat.jpg"
+    },
+    {
+        "id":  "dumbbell-romanian-deadlift",
+        "name":  "Dumbbell Romanian Deadlift",
+        "image":  "/exercises/dumbbell-romanian-deadlift.jpg"
+    },
+    {
+        "id":  "single-leg-romanian-deadlift",
+        "name":  "Single-Leg Romanian Deadlift",
+        "image":  "/exercises/single-leg-romanian-deadlift.jpg"
+    },
+    {
+        "id":  "dumbbell-reverse-lunge",
+        "name":  "Dumbbell Reverse Lunge",
+        "image":  "/exercises/dumbbell-reverse-lunge.jpg"
+    },
+    {
+        "id":  "dumbbell-forward-lunge",
+        "name":  "Dumbbell Forward Lunge",
+        "image":  "/exercises/dumbbell-forward-lunge.jpg"
+    },
+    {
+        "id":  "dumbbell-walking-lunge",
+        "name":  "Dumbbell Walking Lunge",
+        "image":  "/exercises/dumbbell-walking-lunge.jpg"
+    },
+    {
+        "id":  "dumbbell-lateral-lunge",
+        "name":  "Dumbbell Lateral Lunge",
+        "image":  "/exercises/dumbbell-lateral-lunge.jpg"
+    },
+    {
+        "id":  "bulgarian-split-squat",
+        "name":  "Bulgarian Split Squat",
+        "image":  "/exercises/bulgarian-split-squat.jpg"
+    },
+    {
+        "id":  "standing-dumbbell-calf-raise",
+        "name":  "Standing Dumbbell Calf Raise",
+        "image":  "/exercises/standing-dumbbell-calf-raise.jpg"
+    },
+    {
+        "id":  "seated-dumbbell-calf-raise",
+        "name":  "Seated Dumbbell Calf Raise",
+        "image":  "/exercises/seated-dumbbell-calf-raise.jpg"
+    },
+    {
+        "id":  "wall-sit",
+        "name":  "Wall Sit",
+        "image":  "/exercises/wall-sit.jpg"
+    },
+    {
+        "id":  "cable-glute-kickback",
+        "name":  "Cable Glute Kickback",
+        "image":  "/exercises/cable-glute-kickback.jpg"
+    },
+    {
+        "id":  "cable-hip-abduction",
+        "name":  "Cable Hip Abduction",
+        "image":  "/exercises/cable-hip-abduction.jpg"
+    },
+    {
+        "id":  "cable-pull-through",
+        "name":  "Cable Pull-Through",
+        "image":  "/exercises/cable-pull-through.jpg"
+    },
+    {
+        "id":  "dumbbell-hip-thrust",
+        "name":  "Dumbbell Hip Thrust",
+        "image":  "/exercises/dumbbell-hip-thrust.jpg"
+    },
+    {
+        "id":  "single-leg-glute-bridge",
+        "name":  "Single-Leg Glute Bridge",
+        "image":  "/exercises/single-leg-glute-bridge.jpg"
+    },
+    {
+        "id":  "cable-side-bend",
+        "name":  "Cable Side Bend",
+        "image":  "/exercises/cable-side-bend.jpg"
+    },
+    {
+        "id":  "standard-crunch",
+        "name":  "Standard Crunch",
+        "image":  "/exercises/standard-crunch.jpg"
+    },
+    {
+        "id":  "reverse-crunch",
+        "name":  "Reverse Crunch",
+        "image":  "/exercises/reverse-crunch.jpg"
+    },
+    {
+        "id":  "bicycle-crunch",
+        "name":  "Bicycle Crunch",
+        "image":  "/exercises/bicycle-crunch.jpg"
+    },
+    {
+        "id":  "heel-touches",
+        "name":  "Heel Touches",
+        "image":  "/exercises/heel-touches.jpg"
+    },
+    {
+        "id":  "lying-leg-raise",
+        "name":  "Lying Leg Raise",
+        "image":  "/exercises/lying-leg-raise.jpg"
+    },
+    {
+        "id":  "bent-knee-leg-raise",
+        "name":  "Bent-Knee Leg Raise",
+        "image":  "/exercises/bent-knee-leg-raise.jpg"
+    },
+    {
+        "id":  "flutter-kicks",
+        "name":  "Flutter Kicks",
+        "image":  "/exercises/flutter-kicks.jpg"
+    },
+    {
+        "id":  "russian-twist",
+        "name":  "Russian Twist",
+        "image":  "/exercises/russian-twist.jpg"
+    },
+    {
+        "id":  "weighted-crunch",
+        "name":  "Weighted Crunch",
+        "image":  "/exercises/weighted-crunch.jpg"
+    },
+    {
+        "id":  "forearm-plank",
+        "name":  "Forearm Plank",
+        "image":  "/exercises/forearm-plank.jpg"
+    },
+    {
+        "id":  "high-plank",
+        "name":  "High Plank",
+        "image":  "/exercises/high-plank.jpg"
+    },
+    {
+        "id":  "side-plank",
+        "name":  "Side Plank",
+        "image":  "/exercises/side-plank.jpg"
+    },
+    {
+        "id":  "plank-shoulder-taps",
+        "name":  "Plank Shoulder Taps",
+        "image":  "/exercises/plank-shoulder-taps.jpg"
+    },
+    {
+        "id":  "mountain-climbers",
+        "name":  "Mountain Climbers",
+        "image":  "/exercises/mountain-climbers.jpg"
+    },
+    {
+        "id":  "dead-bug",
+        "name":  "Dead Bug",
+        "image":  "/exercises/dead-bug.jpg"
+    },
+    {
+        "id":  "bird-dog",
+        "name":  "Bird Dog",
+        "image":  "/exercises/bird-dog.jpg"
+    },
+    {
+        "id":  "hollow-body-hold",
+        "name":  "Hollow Body Hold",
+        "image":  "/exercises/hollow-body-hold.jpg"
+    },
+    {
+        "id":  "dumbbell-side-bend",
+        "name":  "Dumbbell Side Bend",
+        "image":  "/exercises/dumbbell-side-bend.jpg"
+    },
+    {
+        "id":  "seated-wrist-curl",
+        "name":  "Seated Wrist Curl",
+        "image":  "/exercises/seated-wrist-curl.jpg"
+    },
+    {
+        "id":  "reverse-wrist-curl",
+        "name":  "Reverse Wrist Curl",
+        "image":  "/exercises/reverse-wrist-curl.jpg"
+    },
+    {
+        "id":  "dumbbell-wrist-rotation",
+        "name":  "Dumbbell Wrist Rotation",
+        "image":  "/exercises/dumbbell-wrist-rotation.jpg"
+    },
+    {
+        "id":  "farmer-s-carry",
+        "name":  "Farmer\u0027s Carry",
+        "image":  "/exercises/farmer-s-carry.jpg"
+    },
+    {
+        "id":  "dumbbell-static-hold",
+        "name":  "Dumbbell Static Hold",
+        "image":  "/exercises/dumbbell-static-hold.jpg"
+    },
+    {
+        "id":  "dumbbell-hang-clean",
+        "name":  "Dumbbell Hang Clean",
+        "image":  "/exercises/dumbbell-hang-clean.jpg"
+    },
+    {
+        "id":  "dumbbell-squat-to-curl",
+        "name":  "Dumbbell Squat to Curl",
+        "image":  "/exercises/dumbbell-squat-to-curl.jpg"
+    }
+]

@@ -1,0 +1,54 @@
+x-form-service: &form-service
+  image: form-fitness:local
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  volumes:
+    - fitness-data:/data
+
+services:
+  app:
+    <<: *form-service
+    build: .
+    ports:
+      - "127.0.0.1:${APP_PORT:-8787}:8080"
+    environment:
+      APP_USER: ${APP_USER:-form}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      ALLOW_UNAUTHENTICATED: "1"
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-latest}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  reminders:
+    <<: *form-service
+    command: ["node", "reminders.mjs"]
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      APP_URL: ${APP_URL:-}
+      REMINDER_DAYS: ${REMINDER_DAYS:-Mon,Wed,Fri}
+      REMINDER_TIME: ${REMINDER_TIME:-18:00}
+    healthcheck:
+      test: ["CMD", "node", "-e", "const fs=require('node:fs'); process.exit(Date.now()-Number(fs.readFileSync('/data/reminder-heartbeat','utf8'))<90000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  fitness-data:
