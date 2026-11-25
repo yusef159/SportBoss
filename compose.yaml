@@ -14,7 +14,7 @@ services:
     volumes:
       - fitness-data:/data
     ports:
-      - "127.0.0.1:8787:8787"
+      - "8787:8787"
     environment:
       APP_USER: ${APP_USER:-form}
       APP_PASSWORD: ${APP_PASSWORD:-}

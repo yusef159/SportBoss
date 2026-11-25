@@ -46,9 +46,13 @@ curl --fail http://127.0.0.1:8787/healthz
 
 SportBoss runs the web app and optional Telegram reminders in one container on port 8787. The container runs as a non-root user with a read-only filesystem, a health check, and automatic restarts after process exits. When upgrading from the two-container setup, `--remove-orphans` removes the old reminders container. Keep the Compose project name stable so the app continues using the same `fitness-data` volume.
 
-### Secure access from your phone
+### Open SportBoss on your home network
 
-Compose publishes the port on the Pi's loopback interface. Keep it there and use a private HTTPS reverse proxy. One option is Tailscale Serve with the Pi and phone joined to the same tailnet.
+Compose publishes port 8787 on the Pi's network interfaces. On the Pi, run `ip -br -4 addr show` to find its home network address. On a phone connected to the same network, open `http://PI_LAN_IP:8787` using that address.
+
+### Private HTTPS access with Tailscale
+
+For access away from home, you can use Tailscale Serve with the Pi and phone joined to the same tailnet.
 
 ~~~sh
 sudo tailscale serve --bg 8787
