@@ -50,7 +50,7 @@ const phaseWorkout = (db, id, started) => {
   return workout;
 };
 
-async function api(db, request, path, typesafeKey) {
+async function api(db, request, path, typesafeKey, appState) {
   if (request.method === 'GET') {
     if (path === '/api/overview') return overview(db);
     if (path === '/api/catalog') return catalog;
@@ -74,6 +74,15 @@ async function api(db, request, path, typesafeKey) {
     fail('Cross-site requests are blocked.', 403);
   }
   const data = await readBody(request);
+  if (path === '/api/reset-data') {
+    if (data.confirm !== true) fail('Confirm that you want to reset your training data.');
+    const result = transaction(db, () => {
+      db.exec('DELETE FROM workouts; DELETE FROM preferences;');
+      return overview(db);
+    });
+    appState.resetVersion++;
+    return result;
+  }
   if (path === '/api/settings') {
     const { split, gear, goal, rest, duration } = data;
     if (!['alternate', 'full'].includes(split) || !Array.isArray(gear) || !gear.includes('Bodyweight') ||
@@ -106,6 +115,7 @@ async function api(db, request, path, typesafeKey) {
   if (path === '/api/generate') {
     if (!isKind(data.kind)) fail('Select a workout type.');
     if (pendingWorkout(db)) return overview(db);
+    const { resetVersion } = appState;
     const settings = getSettings(db);
     const history = completedWorkouts(db);
     let proposals;
@@ -113,6 +123,7 @@ async function api(db, request, path, typesafeKey) {
     catch (error) { fail(error.message, 422); }
     const { plan, source, review } = await selectPlan(data.kind, settings.gear, proposals, typesafeKey);
     return transaction(db, () => {
+      if (appState.resetVersion !== resetVersion) fail('Training data was reset. Generate again.', 409);
       if (pendingWorkout(db)) return overview(db);
       const current = getSettings(db);
       if (current.gear.join() !== settings.gear.join() || current.excluded.join() !== settings.excluded.join() ||
@@ -197,7 +208,8 @@ const mimeTypes = {
 export function createApp({ dataDir, username = 'form', password, typesafeKey = '', reminderEnv } = {}) {
   const db = openDatabase(dataDir);
   const credential = password ? digest('Basic ' + Buffer.from(username + ':' + password).toString('base64')) : null;
-  const server = createServer((request, response) => serve(db, request, response, credential, typesafeKey));
+  const appState = { resetVersion: 0 };
+  const server = createServer((request, response) => serve(db, request, response, credential, typesafeKey, appState));
   let stopReminders;
   if (reminderEnv) {
     server.once('listening', () => {
@@ -215,7 +227,7 @@ export function createApp({ dataDir, username = 'form', password, typesafeKey = 
   });
   return server;
 }
-async function serve(db, request, response, credential, typesafeKey) {
+async function serve(db, request, response, credential, typesafeKey, appState) {
   try {
     const path = new URL(request.url, 'http://app.invalid').pathname;
     if (path === '/healthz' && request.method === 'GET') {
@@ -226,7 +238,7 @@ async function serve(db, request, response, credential, typesafeKey) {
       return json(response, 401, { error: 'Sign in to SportBoss.' }, { 'WWW-Authenticate': 'Basic realm="SportBoss", charset="UTF-8"' });
     }
     if (path.startsWith('/api/')) {
-      const result = await api(db, request, path, typesafeKey);
+      const result = await api(db, request, path, typesafeKey, appState);
       if (result.settings) result.aiConfigured = Boolean(typesafeKey);
       return json(response, 200, result);
     }

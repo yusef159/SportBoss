@@ -143,6 +143,50 @@ async function startServer(directory) {
     await closed;
   } };
 }
+test('reset requires confirmation and clears saved training data', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'sportboss-reset-'));
+  const server = await startServer(directory);
+  const db = openDatabase(directory);
+  t.after(async () => {
+    db.close();
+    await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  const exercise = 'standing-dumbbell-calf-raise';
+  const now = Date.now();
+  const day = localTime(now).day;
+  db.prepare('INSERT INTO preferences VALUES(1, ?)').run(JSON.stringify({ rest: 90, excluded: [exercise] }));
+  const workout = db.prepare("INSERT INTO workouts(kind, plan, source, started, finished) VALUES('lower', '[]', 'rules', ?, ?)")
+    .run(now - 60000, now).lastInsertRowid;
+  db.prepare('INSERT INTO sets VALUES(?, 0, ?, 10, 12)').run(workout, exercise);
+  db.prepare("INSERT INTO workout_reviews VALUES(?, '{}')").run(workout);
+  db.exec("INSERT INTO workouts(kind, plan, source) VALUES('upper', '[]', 'rules')");
+  db.prepare("INSERT INTO reminders VALUES(?, 'sent', ?)").run(day, now);
+
+  const [unconfirmed] = await server.request('/api/reset-data', {});
+  assert.equal(unconfirmed, 400);
+  const [crossSite] = await server.request('/api/reset-data', { confirm: true }, { Origin: 'https://example.invalid' });
+  assert.equal(crossSite, 403);
+  const [unauthenticated] = await server.request('/api/reset-data', { confirm: true }, { Authorization: 'Basic invalid' });
+  assert.equal(unauthenticated, 401);
+  const [, before] = await server.request('/api/overview');
+  assert.equal(before.progress.history.length, 1);
+  assert.ok(before.pending);
+
+  const [status, after] = await server.request('/api/reset-data', { confirm: true });
+  assert.equal(status, 200);
+  assert.deepEqual(after.settings, defaults);
+  assert.deepEqual(after.progress.history, []);
+  assert.deepEqual(after.progress.records, []);
+  assert.equal(after.pending, null);
+  for (const table of ['workouts', 'sets', 'workout_reviews', 'preferences']) {
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM ' + table).get().count, 0, table);
+  }
+  assert.equal(db.prepare('SELECT state FROM reminders WHERE day=?').get(day).state, 'sent');
+  const [repeated] = await server.request('/api/reset-data', { confirm: true });
+  assert.equal(repeated, 200);
+});
 test('exercise exclusions persist and apply to generation, swaps and rotation', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'sportboss-exclusions-'));
   let server = await startServer(directory);

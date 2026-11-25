@@ -67,7 +67,7 @@ The **Test and deploy SportBoss** workflow runs tests on pull requests to `main`
 
 **On the Raspberry Pi**
 
-1. Use a non-root account that can run `docker compose` on the same Docker daemon as your current SportBoss deployment. Enable OpenSSH if it is not already running. Use its port, usually 22. If Tailscale SSH already handles port 22, use a separate OpenSSH port and match it in the tailnet grant and GitHub variable. The workflow uses standard SSH keys over Tailscale. [Connect over SSH with Tailscale](https://tailscale.com/docs/how-to/connect-ssh-linux-vm)
+1. Use a non-root account that can run `docker compose` on the same Docker daemon as your current SportBoss deployment. Enable OpenSSH if it is not already running. Run `sudo sshd -T | grep '^port '` for its port. If Tailscale SSH already handles port 22, use a separate OpenSSH port and match it in the tailnet grant and the `PI_PORT` secret. The workflow uses standard SSH keys over Tailscale. [Connect over SSH with Tailscale](https://tailscale.com/docs/how-to/connect-ssh-linux-vm)
 2. Run `tailscale ip -4` for the Pi's private address and `docker compose ls --all` for the existing project name. If the project has been removed, check `docker volume ls` for the prefix of its `_fitness-data` volume. Use that exact project name to keep access to your workout database. A fresh deployment can use the default project name `sportboss`.
 3. Create `~/sportboss-deploy` and install your current app configuration there. For a fresh Pi, start with `.env.example` and configure the options you use.
 
@@ -77,7 +77,7 @@ The **Test and deploy SportBoss** workflow runs tests on pull requests to `main`
    ~~~
 
 4. Generate a dedicated SSH key outside the repository, for example with `ssh-keygen -t ed25519 -f ~/.ssh/sportboss-actions`. Leave its passphrase empty for unattended deployment. Add the **public** key to the Pi account's `~/.ssh/authorized_keys` with the prefix `restrict `. Add the **private** key to GitHub as the secret listed below.
-5. From a trusted Pi terminal, get its OpenSSH host public key with `sudo cat /etc/ssh/ssh_host_ed25519_key.pub`. In the GitHub known-hosts secret, put the Pi's Tailscale IP followed by the public key type and key, for example `100.101.102.103 ssh-ed25519 AAAA…`. For a custom port, use the form `[100.101.102.103]:2222 ssh-ed25519 AAAA…`.
+5. From a trusted Pi terminal, get its OpenSSH public host key with `sudo cat /etc/ssh/ssh_host_ed25519_key.pub`. Copy that full line into the `PI_SSH_HOST_KEY` GitHub Actions variable so the runner verifies the Pi's identity.
 
 **In Tailscale**
 
@@ -92,7 +92,7 @@ Create the runner tag and add a grant for only the Pi's OpenSSH port. Merge the 
 }
 ~~~
 
-Create a federated **OpenID Connect** credential in Tailscale under **Trust credentials**. Select GitHub Actions as the issuer and grant **Auth Keys → Write** for `tag:sportboss-ci`. Enter your repository's exact `main` subject. For repositories using immutable subject claims, use `repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/main`. For older repositories using the previous format, use `repo:OWNER/REPO:ref:refs/heads/main`. Repositories created, renamed or transferred after July 15, 2026 use the immutable format by default. Copy the generated Client ID and Audience. [Tailscale workload identity setup](https://tailscale.com/docs/features/workload-identity-federation) [GitHub OIDC subject format](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims)
+In the Tailscale admin console, open **Keys → Generate auth key**. Select **Reusable**, **Ephemeral**, and the tag allowed by your grant. Select **Pre-approved** if your tailnet uses device approval. Save the generated key in GitHub as `TS_AUTH_KEY`. Rotate it in GitHub before it expires. [Generate a Tailscale auth key](https://tailscale.com/docs/features/access-control/auth-keys#generate-an-auth-key)
 
 **In your existing GitHub repository**
 
@@ -100,17 +100,15 @@ Under **Settings → Secrets and variables → Actions**, add these repository s
 
 | Name | Type | Value |
 | --- | --- | --- |
-| `SPORTBOSS_PI_HOST` | Variable | Pi's Tailscale IPv4 address |
-| `SPORTBOSS_PI_USER` | Variable | Non-root SSH account on the Pi |
-| `SPORTBOSS_PI_SSH_PORT` | Variable | Optional OpenSSH port, default `22` |
-| `SPORTBOSS_COMPOSE_PROJECT` | Variable | Existing Pi Compose project, default `sportboss` |
-| `SPORTBOSS_TS_CLIENT_ID` | Variable | Tailscale federated identity Client ID |
-| `SPORTBOSS_TS_AUDIENCE` | Variable | Tailscale federated identity Audience |
-| `SPORTBOSS_PI_SSH_KEY` | Secret | Dedicated deployment private key |
-| `SPORTBOSS_PI_KNOWN_HOSTS` | Secret | Verified Pi OpenSSH known-hosts line |
-| `SPORTBOSS_DEPLOY_ENABLED` | Variable | Set to `true` to enable deployment after setup |
+| `PI_HOST` | Secret | Pi's Tailscale IPv4 address from `tailscale ip -4` |
+| `PI_PORT` | Secret | Pi's OpenSSH port, usually `22` |
+| `PI_SSH_KEY` | Secret | Dedicated deployment private key |
+| `PI_USER` | Secret | Non-root SSH account on the Pi, from `whoami` while signed in as that account |
+| `TS_AUTH_KEY` | Secret | Reusable, ephemeral Tailscale auth key for the CI runner |
+| `PI_SSH_HOST_KEY` | Variable | Pi's public OpenSSH host key |
+| `SPORTBOSS_COMPOSE_PROJECT` | Variable | Optional existing Pi Compose project, default `sportboss` |
 
-Push the workflow to `main`, then check **Actions → Test and deploy SportBoss**. The deploy job ships tracked application files. Your Pi keeps its `.env`, TypeSafe and Telegram credentials, and SQLite volume. If health checks fail after a successful automated deployment, the script attempts to restore the previous source release using the same data volume. Keep database backups for data recovery.
+Push the updated workflow to `main`, then check **Actions → Test and deploy SportBoss**. Deployments run automatically once the five secrets and the public host-key variable are configured. The deploy job ships tracked application files. Your Pi keeps its `.env`, TypeSafe and Telegram credentials, and SQLite volume. If health checks fail after a successful automated deployment, the script attempts to restore the previous source release using the same data volume. Keep database backups for data recovery.
 
 ### TypeSafe AI
 

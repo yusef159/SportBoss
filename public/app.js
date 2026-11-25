@@ -380,7 +380,7 @@ function libraryGrid() {
         safe(item.name) + '</h2><p>' + safe(item.pattern) + ' · ' + safe(item.gear.join(' + ')) + '</p>' +
         (done ? '<small class="covered">' + icon('check', 14) + ' Completed this cycle</small>' : '') +
         button(label + (omitted ? '<small class="routine-status">Excluded</small>' : ''),
-          'exercise-preference', omitted ? 'plus' : 'minus', 'secondary compact routine-button',
+          'exercise-preference', omitted ? 'plus' : 'minus', 'secondary compact routine-button' + (omitted ? ' is-excluded' : ''),
           'data-exercise-id="' + safe(item.id) + '" data-excluded="' + !omitted + '" aria-label="' +
           label + ' ' + safe(item.name) + (omitted ? ' to your routine, currently excluded' : ' from your routine') + '"') + '</div></article>';
     }).join('') + '</div>' + (items.length ? '' : '<div class="panel empty">No exercises match these filters.</div>');
@@ -474,10 +474,13 @@ function settingsPage() {
     .map(sec => option(sec, sec + ' seconds', rest)).join('');
   const session = '<div class="settings-numbers">' + settingsSelect('Weekly workout goal', 'goal', 'calendar', goalOptions) +
     settingsSelect('Rest between sets', 'rest', 'clock', restOptions) + '</div>';
+  const dataControls = '<div class="settings-data">' + settingsSection('Training data', 'rotate',
+    '<p class="hint">Clear your workout history, current workout, and training preferences.</p>' +
+    button('Reset data', 'confirm-reset-data', null, 'secondary')) + '</div>';
   return '<div class="settings-heading">' + title('Training Settings', 'Customize how SportBoss plans your workouts.') +
     '</div><form id="settings-form" class="settings-form">' + settingsSection('Training plan', 'target', trainingPlan) +
     settingsSection('Equipment', 'dumbbell', equipment) + settingsSection('Session preferences', 'settings', session) +
-    '<button class="button primary settings-save" type="submit">' + icon('check', 19) + 'Save preferences</button></form>';
+    '<button class="button primary settings-save" type="submit">' + icon('check', 19) + 'Save preferences</button></form>' + dataControls;
 }
 function recapPanel(result) {
   return '<div class="summary-metrics"><div><strong>' + duration(result.duration) + '</strong><span>Duration</span></div><div><strong>' +
@@ -576,6 +579,13 @@ document.addEventListener('click', async event => {
       button('Discard workout', 'discard', null, 'danger') + '</div>');
     return;
   }
+  if (action === 'confirm-reset-data') {
+    showDialog('Reset training data?', '<p>This permanently deletes your workout history and current workout, and restores default training preferences.</p>' +
+      '<p id="reset-data-error" role="alert" hidden></p>' +
+      '<div class="dialog-actions">' + button('Cancel', 'close', null, 'secondary', 'autofocus') +
+      button('Reset data', 'reset-data', null, 'danger') + '</div>');
+    return;
+  }
   busy = true;
   if (action === 'skip-rest' || action === 'discard') scheduleRestAlarm(null);
   control.disabled = true;
@@ -591,6 +601,18 @@ document.addEventListener('click', async event => {
       window.scrollTo(0, 0);
     }
     if (action === 'discard') { await mutation('discard', { id }); dialog.close(); }
+    if (action === 'reset-data') {
+      dialog.querySelector('#reset-data-error').hidden = true;
+      data = await api('reset-data', { confirm: true });
+      recap = undefined;
+      selectedKind = undefined;
+      trendPoints = undefined;
+      trendRequest++;
+      dialog.close();
+      render();
+      document.querySelector('[data-action="confirm-reset-data"]')?.focus({ preventScroll: true });
+      notify('Training data reset.');
+    }
     if (action === 'skip-rest') await mutation('skip-rest', { id, until: workout.rest_until });
     if (action === 'complete') {
       await mutation('set', { id, ordinal: workout.sets.length, ...activeValues });
@@ -627,7 +649,11 @@ document.addEventListener('click', async event => {
       showDialog(labels[result.kind] + ' workout', recapPanel(result));
     }
   } catch (error) {
-    notify(error.message);
+    if (action === 'reset-data' && dialog.open) {
+      const message = dialog.querySelector('#reset-data-error');
+      message.hidden = false;
+      message.textContent = error.message;
+    } else notify(error.message);
     if (action === 'generate') control.querySelector('span').textContent = 'Generate workout';
     if (error.status === 409 && action !== 'generate') {
       try { data = await api('overview'); dialog.close(); render(); } catch { /* Keep the latest available view. */ }
