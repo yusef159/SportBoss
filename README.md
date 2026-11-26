@@ -80,7 +80,7 @@ The **Test and deploy SportBoss** workflow runs tests on pull requests to `main`
    If you configured the previous workflow, copy `~/sportboss-deploy/.env` into your checkout only if the checkout has no `.env` yet. For a new installation, copy `.env.example` to `.env` and configure the options you use. If the Git command prompts for credentials or fails on a private repository, give the Pi's Git checkout separate read-only repository access, for example via a GitHub deploy key. [GitHub deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys#deploy-keys)
 
 4. Generate a dedicated SSH key outside the repository, for example with `ssh-keygen -t ed25519 -f ~/.ssh/sportboss-actions`. Leave its passphrase empty for unattended deployment. Add the **public** key to the Pi account's `~/.ssh/authorized_keys` with the prefix `restrict `. Add the **private** key to GitHub as the secret listed below.
-5. From a trusted Pi terminal, get its OpenSSH public host key with `sudo cat /etc/ssh/ssh_host_ed25519_key.pub`. Copy that full line into the `PI_SSH_HOST_KEY` GitHub Actions variable so the runner verifies the Pi's identity.
+5. From a trusted Pi terminal, get its OpenSSH public host key with `sudo cat /etc/ssh/ssh_host_ed25519_key.pub`. Copy that full line into `PI_SSH_HOST_KEY` under GitHub Actions Secrets or Variables so the runner verifies the Pi's identity.
 
 **In Tailscale**
 
@@ -108,11 +108,11 @@ Under **Settings → Secrets and variables → Actions**, add these repository s
 | `PI_SSH_KEY` | Secret | Dedicated deployment private key |
 | `PI_USER` | Secret | Non-root SSH account on the Pi, from `whoami` while signed in as that account |
 | `TS_AUTH_KEY` | Secret | Reusable, ephemeral Tailscale auth key for the CI runner |
-| `PI_SSH_HOST_KEY` | Variable | Pi's public OpenSSH host key |
+| `PI_SSH_HOST_KEY` | Secret or variable | Pi's public OpenSSH host key |
 | `SPORTBOSS_COMPOSE_PROJECT` | Variable | Optional existing Pi Compose project, default `sportboss` |
 | `SPORTBOSS_PI_REPO_PATH` | Variable | Optional absolute path to the Pi checkout, default `$HOME/apps/SportBoss` |
 
-Push the updated workflow to `main`, then check **Actions → Test and deploy SportBoss**. Deployments run automatically once the five secrets and the public host-key variable are configured. The Pi fast-forwards its checkout and stops if there are local edits or divergent commits. Docker Compose uses the checkout's `.env` and the existing data volume. If a newly pulled revision fails its health checks, the script attempts to restore the previous revision using the same volume. Keep database backups for data recovery.
+Push the updated workflow to `main`, then check **Actions → Test and deploy SportBoss**. Deployments run automatically once the five secrets and `PI_SSH_HOST_KEY` are configured. The Pi fast-forwards its checkout and stops if there are local edits or divergent commits. Docker Compose uses the checkout's `.env` and the existing data volume. If a newly pulled revision fails its health checks, the script attempts to restore the previous revision using the same volume. Keep database backups for data recovery.
 
 ### TypeSafe AI
 

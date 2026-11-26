@@ -42,7 +42,7 @@ jobs:
       PI_HOST: ${{ secrets.PI_HOST }}
       PI_USER: ${{ secrets.PI_USER }}
       PI_PORT: ${{ secrets.PI_PORT }}
-      PI_SSH_HOST_KEY: ${{ vars.PI_SSH_HOST_KEY }}
+      PI_SSH_HOST_KEY: ${{ secrets.PI_SSH_HOST_KEY || vars.PI_SSH_HOST_KEY }}
       COMPOSE_PROJECT: ${{ vars.SPORTBOSS_COMPOSE_PROJECT || 'sportboss' }}
       PI_REPO_PATH: ${{ vars.SPORTBOSS_PI_REPO_PATH }}
     steps:
