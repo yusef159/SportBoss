@@ -1,5 +1,5 @@
 const icons = {
-  today: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  home: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   library: '<path d="M4 5h4v15H4zM11 5h4v15h-4zM18 5l3 14"/>',
   progress: '<path d="M3 3v17h18M6 15l5-5 3 3 6-7"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M4 9l2-1 1-3 3 1 2-2 2 2 3-1 1 3 2 1-1 3 1 3-2 1-1 3-3-1-2 2-2-2-3 1-1-3-2-1 1-3z"/>',
@@ -24,6 +24,7 @@ const icons = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   trophy: '<path d="M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 3v5m-4 2h8"/>',
+  flame: '<path d="M12 22a7 7 0 0 0 7-7c0-4-2-7-4-9 .5 3-1 4-2 4-2 0-3-3-2-8-4 3-6 8-6 13a7 7 0 0 0 7 7Z"/><path d="M12 22a3 3 0 0 0 3-3c0-2-2-4-3-5-1 1-3 3-3 5a3 3 0 0 0 3 3Z"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
 };
 const icon = (name, size = 20) => '<svg aria-hidden="true" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (icons[name] || icons.dumbbell) + '</svg>';
@@ -64,7 +65,7 @@ let view = metaView();
 let busy = false;
 let timer;
 let toastTimer;
-let exercisePopupTimer;
+let workoutPopupTimer;
 let restAlarm;
 let restDeadline = null;
 let audioContext;
@@ -83,7 +84,7 @@ const stepWidth = 21;
 
 function metaView() {
   const name = location.hash.slice(1);
-  return ['library','progress','settings'].includes(name) ? name : 'today';
+  return ['library','progress','settings'].includes(name) ? name : 'home';
 }
 function notify(message) {
   notice.textContent = message;
@@ -94,10 +95,23 @@ function notify(message) {
 function showExerciseComplete(exerciseId) {
   const exercise = exercises.get(exerciseId);
   if (!exercise) return;
-  clearTimeout(exercisePopupTimer);
-  exercisePopup.innerHTML = '<div class="exercise-popup-card"><span class="exercise-popup-check">' + icon('check', 26) +
-    '</span><strong>Exercise complete</strong><span>' + safe(exercise.name) + '</span></div>';
-  exercisePopupTimer = setTimeout(() => exercisePopup.replaceChildren(), 2400);
+  showWorkoutPopup('<div class="exercise-popup-card"><span class="exercise-popup-check">' + icon('check', 26) +
+    '</span><strong>Exercise complete</strong><span>' + safe(exercise.name) + '</span></div>', 2400);
+}
+function showWorkoutPopup(content, duration) {
+  clearTimeout(workoutPopupTimer);
+  exercisePopup.innerHTML = content;
+  workoutPopupTimer = setTimeout(() => exercisePopup.replaceChildren(), duration);
+}
+function streakLength(weeks) {
+  return weeks + (weeks === 1 ? ' week' : ' weeks');
+}
+function showWeeklyGoal(streak) {
+  const confetti = Array.from({ length: 14 }, (_, index) => '<span style="--spark-angle:' + Math.round(index * 360 / 14) +
+    'deg;--spark-distance:' + (70 + index % 4 * 15) + 'px"></span>').join('');
+  showWorkoutPopup('<div class="exercise-popup-card weekly-celebration"><span class="weekly-confetti" aria-hidden="true">' + confetti +
+    '</span><span class="exercise-popup-check">' + icon('flame', 28) + '</span><strong>Weekly goal reached!</strong><span>' +
+    streakLength(streak) + ' in a row</span></div>', 3800);
 }
 function enableWorkoutAudio() {
   const Context = window.AudioContext || window.webkitAudioContext;
@@ -153,11 +167,11 @@ async function api(path, body) {
   return result;
 }
 function nav() {
-  const links = [['today','Today'],['library','Exercise Library'],['progress','Progress']];
+  const links = [['home','Home'],['library','Exercise Library'],['progress','Progress']];
   const link = ([page, label], mobile = false) => '<a href="#' + page + '" class="' + (view === page ? 'current' : '') + '"' +
     (view === page ? ' aria-current="page"' : '') + '>' + icon(page, 18) + '<span>' +
     (mobile && page === 'library' ? 'Library' : label) + '</span></a>';
-  document.querySelector('#header').innerHTML = '<div class="header-wrap"><a href="#today" class="brand" aria-label="SportBoss home">' +
+  document.querySelector('#header').innerHTML = '<div class="header-wrap"><a href="#home" class="brand" aria-label="SportBoss home">' +
     '<img class="brand-mark" src="/sportboss.svg" alt="" width="28" height="28">SportBoss</a><nav class="desktop-nav" aria-label="Main navigation">' +
     links.map(item => link(item)).join('') + '</nav><a class="settings-link ' + (view === 'settings' ? 'current' : '') +
     '" href="#settings" aria-label="Training settings">' + icon('settings', 19) + '<span>Settings</span></a></div>';
@@ -178,15 +192,18 @@ function photo(exercise, cls = '', expandable = true) {
     '" aria-label="Enlarge image for ' + safe(exercise.name) + '">' + image + '</button>';
 }
 function weeklyCard() {
-  const { week, today } = data.progress;
+  const { week, today, weeklyGoal } = data.progress;
   const count = week.reduce((sum, item) => sum + item.count, 0);
   return '<section class="panel widget"><div class="widget-title"><span class="icon-box">' + icon('calendar') +
     '</span><h2>Weekly consistency</h2></div><div class="week-count"><strong>' + count +
-    '</strong><span> / ' + data.settings.goal + ' workouts</span></div><div class="week-grid">' +
+    '</strong><span> / ' + weeklyGoal.target + ' workouts</span>' +
+    (weeklyGoal.reached ? '<span class="week-goal-reached">' + icon('check', 14) + 'Goal reached</span>' : '') +
+    '</div><div class="week-grid">' +
     week.map(day => '<div class="week-day' + (day.count ? ' done' : '') + (day.day === today ? ' today' : '') +
       '" title="' + dateLong(day.day) + ' · ' + day.count + ' workouts"><span>' + dateText(day.day, { weekday: 'short' }) +
       '</span><b>' + (day.count ? icon('check', 15) : Number(day.day.slice(-2))) + '</b></div>').join('') +
-    '</div></section>';
+    '</div><div class="week-streak">' + icon('flame', 21) + '<span>Current streak</span><strong>' +
+    streakLength(weeklyGoal.streak) + '</strong></div></section>';
 }
 function rotationCard() {
   const bars = Object.entries(data.progress.rotation).map(([scope, item]) => {
@@ -199,13 +216,20 @@ function rotationCard() {
     '</span><h2>Exercise rotation</h2></div>' + bars + '<a class="text-link" href="#library">Browse exercises ' +
     icon('chevron', 16) + '</a></section>';
 }
-function today() {
+function historyCard() {
+  const rows = data.progress.history.map(row => '<button type="button" class="history-row" data-action="history" data-id="' + row.id +
+    '"><span class="icon-box">' + icon(row.kind) + '</span><span class="history-details"><strong>' + labels[row.kind] + '</strong>' +
+    workoutTiming(row) + '<small>' + row.count + ' exercises</small></span><span class="history-duration">' + duration(row.duration) + '</span>' +
+    icon('chevron', 17) + '</button>').join('');
+  return '<section class="panel widget"><div class="widget-title"><span class="icon-box">' + icon('calendar') +
+    '</span><h2>Workout history</h2></div>' + (rows || '<div class="empty">Your completed workouts will appear here.</div>') + '</section>';
+}
+function home() {
   const pick = selectedKind || data.recommendation;
   const target = data.settings.duration;
-  const cards = Object.keys(labels).map(kind => '<button class="type-card' + (pick === kind ? ' selected' : '') +
-    '" data-action="select" data-kind="' + kind + '" aria-pressed="' + (pick === kind) +
-    '"><span class="icon-box">' + icon(kind, 21) + '</span><strong>' + labels[kind] + '</strong><span>' + descriptions[kind] +
-    '</span><i>' + (pick === kind ? icon('check', 13) : '') + '</i></button>').join('');
+  const types = Object.keys(labels).map(kind => '<button type="button" class="type-option" data-action="select" data-kind="' +
+    kind + '" aria-pressed="' + (pick === kind) +
+    '">' + icon(kind, 18) + '<span>' + labels[kind] + '</span></button>').join('');
   return title('Training Hub', 'Plan your next workout and track your progress.',
     '<div class="date-chip">' + icon('calendar', 17) + safe(dateLong(data.progress.today)) + '</div>') +
     '<div class="dashboard"><div class="dashboard-main"><section class="hero panel"><div class="hero-image"></div><div class="hero-copy"><span class="eyebrow">' +
@@ -213,10 +237,10 @@ function today() {
     '</span><h2>' + labels[pick] + '</h2><p>' + descriptions[pick] + '</p><div class="hero-metrics">' +
     (target ? '' : '<span>' + icon('dumbbell', 17) + data.standardCounts[pick] + ' exercises</span>') +
     '<span>' + icon('clock', 16) + (target ? target + ' min target' : 'About ' + data.standardEstimates[pick] + ' min') +
-    '</span></div>' + button('Generate workout', 'generate', 'play') + '<p class="ai-status">' +
+    '</span></div><div class="workout-types" role="group" aria-label="Workout type">' + types + '</div>' +
+    button('Generate workout', 'generate', 'play') + '<p class="ai-status">' +
     (data.aiConfigured ? 'TypeSafe AI review configured' : 'Rule-based planning · TypeSafe AI is off') + '</p></div></section>' +
-    '<section class="type-section"><div class="section-head"><h2>Choose your workout</h2><p>Select a session to match your training plan.</p></div><div class="types">' +
-    cards + '</div></section></div><aside class="dashboard-side">' + weeklyCard() + rotationCard() + '</aside></div>';
+    historyCard() + '</div><aside class="dashboard-side">' + weeklyCard() + rotationCard() + '</aside></div>';
 }
 function sourceText(workout) {
   if (workout.review?.modified) return 'Manually adjusted workout';
@@ -504,27 +528,21 @@ function trends() {
     trendGraph(series, unit);
 }
 function progressPage() {
-  const { history, records } = data.progress;
+  const { records } = data.progress;
   const ids = [...new Set(records.map(record => record.exercise))];
   if (!ids.includes(trendId)) trendId = ids[0];
-  const rows = history.map(row => '<button type="button" class="history-row" data-action="history" data-id="' + row.id +
-    '"><span class="icon-box">' + icon(row.kind) + '</span><span class="history-details"><strong>' + labels[row.kind] + '</strong>' +
-    workoutTiming(row) + '<small>' + row.count + ' exercises</small></span><span class="history-duration">' + duration(row.duration) + '</span>' +
-    icon('chevron', 17) + '</button>').join('');
   const prs = records.map(record => {
     const exercise = exercises.get(record.exercise);
     return '<div class="record"><span><strong>' + safe(exercise.name) + '</strong><small>' +
       dateShort(record.day) +
       '</small></span><strong>' + (record.kg ? record.kg + ' kg × ' : '') + record.reps + (exercise.timed ? 's' : ' reps') + '</strong></div>';
   }).join('');
-  return title('Progress', 'See your strength, personal records and training history.') +
-    '<div class="dashboard"><div class="dashboard-main progress-main"><section class="panel widget progression"><div class="widget-title"><span class="icon-box">' +
+  return title('Progress', 'Track strength gains and personal records.') +
+    '<div class="dashboard"><div class="dashboard-main"><section class="panel widget progression"><div class="widget-title"><span class="icon-box">' +
     icon('progress') + '</span><h2>Strength progression</h2></div>' +
     (ids.length ? '<select id="trend" aria-label="Exercise progression">' + ids.map(id => option(id, exercises.get(id).name, trendId)).join('') +
       '</select><div id="trend-content">' + trends() + '</div>' : '<div class="empty">Complete your first workout to see your strength trend.</div>') +
-    '</section><section class="panel widget"><div class="widget-title"><span class="icon-box">' + icon('calendar') +
-    '</span><h2>Workout history</h2></div>' + (rows || '<div class="empty">Your completed workouts will appear here.</div>') +
-    '</section></div><aside class="dashboard-side">' + weeklyCard() + rotationCard() +
+    '</section></div><aside class="dashboard-side">' + rotationCard() +
     '<section class="panel widget"><div class="widget-title"><span class="icon-box">' + icon('trophy') +
     '</span><h2>Personal records</h2></div>' + (prs || '<div class="empty">Log a workout to set your first baseline.</div>') +
     '</section></aside></div>';
@@ -610,12 +628,12 @@ function render() {
   else if (view === 'settings') app.innerHTML = settingsPage();
   else if (recap) {
     app.innerHTML = title('Workout complete', labels[recap.kind] + ' session saved.') + '<section class="panel session-panel recap">' +
-      recapPanel(recap) + '<footer>' + button('Back to Today', 'clear-recap', 'check') + '</footer></section>';
+      recapPanel(recap) + '<footer>' + button('Back to Home', 'clear-recap', 'check') + '</footer></section>';
   } else if (data.pending?.started) {
     app.innerHTML = training(data.pending);
     wireTraining();
   } else if (data.pending) app.innerHTML = preview(data.pending);
-  else app.innerHTML = today();
+  else app.innerHTML = home();
   if (view === 'progress' && trendId && !trendPoints) void loadTrend();
 }
 async function loadTrend() {
@@ -636,6 +654,7 @@ async function mutation(path, body) {
     trendPoints = undefined;
   }
   render();
+  if (data.weeklyGoalReached) showWeeklyGoal(data.progress.weeklyGoal.streak);
 }
 document.addEventListener('click', async event => {
   const control = event.target.closest('[data-action]');
@@ -714,7 +733,7 @@ document.addEventListener('click', async event => {
     if (action === 'skip-rest') await mutation('skip-rest', { id, until: workout.rest_until });
     if (action === 'complete') {
       await mutation('set', { id, ordinal: workout.sets.length, ...activeValues });
-      if (workout.next.set === workout.next.sets) showExerciseComplete(workout.next.id);
+      if (!data.weeklyGoalReached && workout.next.set === workout.next.sets) showExerciseComplete(workout.next.id);
       if (recap) window.scrollTo(0, 0);
       else app.querySelector('#rest-banner:not([hidden])')?.scrollIntoView({ block: 'nearest' });
     }
@@ -806,7 +825,7 @@ document.addEventListener('submit', async event => {
       goal: Number(form.get('goal')), rest: Number(form.get('rest')), duration: Number(form.get('duration')),
     });
     selectedKind = undefined;
-    notify('Training preferences saved.');
+    if (!data.weeklyGoalReached) notify('Training preferences saved.');
   } catch (error) { notify(error.message); }
   finally { busy = false; if (submit) submit.disabled = false; }
 });

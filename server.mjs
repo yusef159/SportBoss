@@ -8,7 +8,7 @@ import { byId, catalog, equipment, kinds, swapPrescription } from './lib/catalog
 import { candidates, durationOptions, selectPlan, swapOptions } from './lib/planner.mjs';
 import { startReminders } from './reminders.mjs';
 import {
-  completedWorkouts, describeWorkout, exerciseTrend, getSettings, openDatabase,
+  awardWeeklyGoal, completedWorkouts, describeWorkout, exerciseTrend, getSettings, openDatabase,
   overview, pendingWorkout, saveSettings, summary, transaction, workoutById,
 } from './lib/storage.mjs';
 
@@ -77,7 +77,7 @@ async function api(db, request, path, typesafeKey, appState) {
   if (path === '/api/reset-data') {
     if (data.confirm !== true) fail('Confirm that you want to reset your training data.');
     const result = transaction(db, () => {
-      db.exec('DELETE FROM workouts; DELETE FROM preferences;');
+      db.exec('DELETE FROM workouts; DELETE FROM preferences; DELETE FROM weekly_goal_achievements;');
       return overview(db);
     });
     appState.resetVersion++;
@@ -98,7 +98,9 @@ async function api(db, request, path, typesafeKey, appState) {
       const settings = getSettings(db);
       saveSettings(db, { ...settings, split, gear: equipment.filter(item => gear.includes(item)), goal, rest,
         duration: duration ?? settings.duration });
-      return overview(db);
+      const now = Date.now();
+      const weeklyGoalReached = awardWeeklyGoal(db, goal, now);
+      return { ...overview(db, now), weeklyGoalReached };
     });
   }
   if (path === '/api/exercise-preference') {
@@ -191,10 +193,12 @@ async function api(db, request, path, typesafeKey, appState) {
       if (workout.rest_until > now) fail('Finish or skip the rest timer first.', 409);
       db.prepare('INSERT INTO sets VALUES(?, ?, ?, ?, ?)').run(id, ordinal, exercise.id, kg, reps);
       const done = ordinal + 1 === detail.totalSets;
+      const { goal, rest } = getSettings(db);
       db.prepare('UPDATE workouts SET finished=?, rest_until=? WHERE id=?').run(
-        done ? now : null, done ? null : now + getSettings(db).rest * 1000, id,
+        done ? now : null, done ? null : now + rest * 1000, id,
       );
-      return { ...overview(db), summary: done ? summary(db, workoutById(db, id)) : null };
+      const weeklyGoalReached = done && awardWeeklyGoal(db, goal, now);
+      return { ...overview(db, now), weeklyGoalReached, summary: done ? summary(db, workoutById(db, id)) : null };
     });
   }
   fail('Page not found.', 404);

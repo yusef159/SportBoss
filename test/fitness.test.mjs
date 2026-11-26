@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { byId, catalog, eligible, equipment } from '../lib/catalog.mjs';
 import { candidates, defaults, durationOptions, estimatedWorkoutMinutes, rotation, selectPlan, swapOptions } from '../lib/planner.mjs';
-import { describeWorkout, exerciseTrend, localTime, openDatabase } from '../lib/storage.mjs';
+import { awardWeeklyGoal, describeWorkout, exerciseTrend, localTime, openDatabase, overview, saveSettings } from '../lib/storage.mjs';
 import { createApp } from '../server.mjs';
 import { sendDueReminder } from '../reminders.mjs';
 
@@ -183,6 +183,55 @@ test('Jerusalem dates account for daylight saving and local midnight', () => {
   assert.deepEqual(localTime(Date.parse('2026-01-01T21:10:00Z')), { day: '2026-01-01', time: '23:10' });
 });
 
+test('weekly goals extend a streak in Jerusalem and a missed week breaks it', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'sportboss-streak-'));
+  const db = openDatabase(directory);
+  t.after(async () => { db.close(); await rm(directory, { recursive: true, force: true }); });
+  const insert = db.prepare("INSERT INTO workouts(kind,plan,source,started,finished) VALUES('lower','[]','rules',?,?)");
+  const complete = timestamp => {
+    const finished = Date.parse(timestamp);
+    insert.run(finished - 60000, finished);
+    return finished;
+  };
+  saveSettings(db, { ...defaults, goal: 2 });
+  assert.equal(awardWeeklyGoal(db, 2, complete('2026-06-07T20:30:00Z')), false);
+  assert.equal(awardWeeklyGoal(db, 2, complete('2026-06-07T20:59:00Z')), true);
+  const monday = Date.parse('2026-06-07T21:00:00Z');
+  const status = now => overview(db, now).progress.weeklyGoal;
+  assert.deepEqual(status(monday), { target: 2, reached: false, streak: 1 });
+  assert.equal(awardWeeklyGoal(db, 2, complete('2026-06-07T21:01:00Z')), false);
+  const reached = complete('2026-06-09T10:00:00Z');
+  assert.equal(awardWeeklyGoal(db, 2, reached), true);
+  assert.equal(awardWeeklyGoal(db, 2, reached), false);
+  saveSettings(db, { ...defaults, goal: 4 });
+  assert.deepEqual(status(reached), { target: 2, reached: true, streak: 2 });
+  assert.deepEqual(status(monday + 7 * 86400000), { target: 4, reached: false, streak: 2 });
+  assert.deepEqual(status(monday + 14 * 86400000), { target: 4, reached: false, streak: 0 });
+});
+
+test('existing workout history seeds weekly achievements once using the saved goal', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'sportboss-streak-upgrade-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const old = openDatabase(directory);
+  saveSettings(old, { ...defaults, goal: 2 });
+  old.exec('DROP TABLE weekly_goal_achievements');
+  const insert = old.prepare("INSERT INTO workouts(kind,plan,source,started,finished) VALUES('lower','[]','rules',?,?)");
+  for (const date of ['2024-06-03T12:00:00Z', '2024-06-04T12:00:00Z', '2024-06-10T12:00:00Z']) {
+    const finished = Date.parse(date);
+    insert.run(finished - 60000, finished);
+  }
+  old.close();
+  const upgraded = openDatabase(directory);
+  const now = Date.parse('2024-06-11T12:00:00Z');
+  assert.deepEqual(overview(upgraded, now).progress.weeklyGoal, { target: 2, reached: false, streak: 1 });
+  saveSettings(upgraded, { ...defaults, goal: 1 });
+  upgraded.close();
+  const reopened = openDatabase(directory);
+  try {
+    assert.deepEqual(overview(reopened, now).progress.weeklyGoal, { target: 1, reached: false, streak: 1 });
+  } finally { reopened.close(); }
+});
+
 test('the working-weight trend uses the best logged weight for each rep count per completed workout', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'sportboss-trend-'));
   const db = openDatabase(directory);
@@ -268,6 +317,7 @@ test('reset requires confirmation and clears saved training data', async t => {
   db.prepare('INSERT INTO preferences VALUES(1, ?)').run(JSON.stringify({ rest: 90, excluded: [exercise] }));
   const workout = db.prepare("INSERT INTO workouts(kind, plan, source, started, finished) VALUES('lower', '[]', 'rules', ?, ?)")
     .run(now - 60000, now).lastInsertRowid;
+  assert.equal(awardWeeklyGoal(db, 1, now), true);
   db.prepare('INSERT INTO sets VALUES(?, 0, ?, 10, 12)').run(workout, exercise);
   db.prepare("INSERT INTO workout_reviews VALUES(?, '{}')").run(workout);
   db.exec("INSERT INTO workouts(kind, plan, source) VALUES('upper', '[]', 'rules')");
@@ -289,13 +339,45 @@ test('reset requires confirmation and clears saved training data', async t => {
   assert.deepEqual(after.progress.history, []);
   assert.deepEqual(after.progress.records, []);
   assert.equal(after.pending, null);
-  for (const table of ['workouts', 'sets', 'workout_reviews', 'preferences']) {
+  assert.deepEqual(after.progress.weeklyGoal, { target: defaults.goal, reached: false, streak: 0 });
+  for (const table of ['workouts', 'sets', 'workout_reviews', 'preferences', 'weekly_goal_achievements']) {
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM ' + table).get().count, 0, table);
   }
   assert.equal(db.prepare('SELECT state FROM reminders WHERE day=?').get(day).state, 'sent');
   const [repeated] = await server.request('/api/reset-data', { confirm: true });
   assert.equal(repeated, 200);
 });
+
+test('completing a workout returns the weekly goal celebration once', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'sportboss-streak-api-'));
+  const server = await startServer(directory);
+  const db = openDatabase(directory);
+  t.after(async () => {
+    db.close();
+    await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const request = server.request;
+  await request('/api/settings', { ...defaults, goal: 2 });
+  const insert = db.prepare("INSERT INTO workouts(kind,plan,source,started) VALUES('upper',?,'rules',?)");
+  const plan = JSON.stringify([{ id: 'standard-push-up', sets: 1, reps: 10 }]);
+  const finish = async () => {
+    const id = Number(insert.run(plan, Date.now()).lastInsertRowid);
+    const set = { id, ordinal: 0, kg: 0, reps: 10 };
+    const [status, result] = await request('/api/set', set);
+    assert.equal(status, 200);
+    return { result, set };
+  };
+  assert.equal((await finish()).result.weeklyGoalReached, false);
+  const { result, set } = await finish();
+  assert.equal(result.weeklyGoalReached, true);
+  assert.deepEqual(result.progress.weeklyGoal, { target: 2, reached: true, streak: 1 });
+  assert.equal((await request('/api/set', set))[1].weeklyGoalReached, undefined);
+  assert.equal((await finish()).result.weeklyGoalReached, false);
+  const [, settings] = await request('/api/settings', { ...defaults, goal: 4 });
+  assert.deepEqual(settings.progress.weeklyGoal, { target: 2, reached: true, streak: 1 });
+});
+
 test('exercise exclusions persist and apply to generation, swaps and rotation', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'sportboss-exclusions-'));
   let server = await startServer(directory);
