@@ -44,6 +44,7 @@ jobs:
       PI_PORT: ${{ secrets.PI_PORT }}
       PI_SSH_HOST_KEY: ${{ vars.PI_SSH_HOST_KEY }}
       COMPOSE_PROJECT: ${{ vars.SPORTBOSS_COMPOSE_PROJECT || 'sportboss' }}
+      PI_REPO_PATH: ${{ vars.SPORTBOSS_PI_REPO_PATH }}
     steps:
       - name: Check deployment settings and the latest main commit
         id: branch
@@ -113,15 +114,10 @@ jobs:
           printf '%s\n' "$PI_SSH_KEY" | tr -d '\r' > "$scratch/key"
           printf 'sportboss-pi %s\n' "$PI_SSH_HOST_KEY" | tr -d '\r' > "$scratch/known_hosts"
 
-          git archive --format=tar.gz --output="$scratch/source.tar.gz" "$GITHUB_SHA" -- \
-            .dockerignore Dockerfile compose.yaml package.json catalog.json server.mjs reminders.mjs \
-            lib/ public/ tools/backup.mjs
-
-          # Pass the script as a command so SSH stdin carries only the source archive.
           deploy_script=$(base64 -w 0 tools/deploy-pi.sh)
-          ssh -T -p "$PI_PORT" -i "$scratch/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+          repo_path=$(printf '%s' "$PI_REPO_PATH" | base64 -w 0)
+          ssh -nT -p "$PI_PORT" -i "$scratch/key" -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o HostKeyAlias=sportboss-pi -o HostKeyAlgorithms=ssh-ed25519 \
             -o "UserKnownHostsFile=$scratch/known_hosts" -o GlobalKnownHostsFile=/dev/null \
             -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
-            "$PI_USER@$PI_HOST" "bash -c \"\$(printf %s '$deploy_script' | base64 -d)\" -- '$GITHUB_SHA' '$COMPOSE_PROJECT'" \
-            < "$scratch/source.tar.gz"
+            "$PI_USER@$PI_HOST" "bash -c \"\$(printf %s '$deploy_script' | base64 -d)\" -- '$GITHUB_SHA' '$COMPOSE_PROJECT' '$repo_path'"

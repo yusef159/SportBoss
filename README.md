@@ -63,18 +63,21 @@ Use the displayed HTTPS URL from your phone. Set APP_URL in .env to that same UR
 
 ### Automatic deployment from GitHub Actions
 
-The **Test and deploy SportBoss** workflow runs tests on pull requests to `main`. After setup, successful pushes to `main` deploy over your tailnet. The Pi builds the tested commit with Docker Compose and checks the app before marking the release current. You can also run the workflow from the Actions tab with `main` selected.
+The **Test and deploy SportBoss** workflow runs tests on pull requests to `main`. After setup, successful pushes to `main` deploy over your tailnet. The Pi fetches the tested commit from GitHub into your existing checkout, builds it there with Docker Compose, and waits for the app to become healthy. You can also run the workflow from the Actions tab with `main` selected.
 
 **On the Raspberry Pi**
 
 1. Use a non-root account that can run `docker compose` on the same Docker daemon as your current SportBoss deployment. Enable OpenSSH if it is not already running. Run `sudo sshd -T | grep '^port '` for its port. If Tailscale SSH already handles port 22, use a separate OpenSSH port and match it in the tailnet grant and the `PI_PORT` secret. The workflow uses standard SSH keys over Tailscale. [Connect over SSH with Tailscale](https://tailscale.com/docs/how-to/connect-ssh-linux-vm)
 2. Run `tailscale ip -4` for the Pi's private address and `docker compose ls --all` for the existing project name. If the project has been removed, check `docker volume ls` for the prefix of its `_fitness-data` volume. Use that exact project name to keep access to your workout database. A fresh deployment can use the default project name `sportboss`.
-3. Create `~/sportboss-deploy` and install your current app configuration there. For a fresh Pi, start with `.env.example` and configure the options you use.
+3. Keep your existing checkout on `main` and place `.env` beside its `compose.yaml`. The workflow defaults to `~/apps/SportBoss` under the SSH account's home directory. Confirm the Pi can reach GitHub without an interactive prompt.
 
    ~~~sh
-   install -d -m 700 "$HOME/sportboss-deploy"
-   install -m 600 /path/to/current/sportboss/.env "$HOME/sportboss-deploy/.env"
+   cd "$HOME/apps/SportBoss"
+   git status --short --branch
+   GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code origin refs/heads/main
    ~~~
+
+   If you configured the previous workflow, copy `~/sportboss-deploy/.env` into your checkout only if the checkout has no `.env` yet. For a new installation, copy `.env.example` to `.env` and configure the options you use. If the Git command prompts for credentials or fails on a private repository, give the Pi's Git checkout separate read-only repository access, for example via a GitHub deploy key. [GitHub deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys#deploy-keys)
 
 4. Generate a dedicated SSH key outside the repository, for example with `ssh-keygen -t ed25519 -f ~/.ssh/sportboss-actions`. Leave its passphrase empty for unattended deployment. Add the **public** key to the Pi account's `~/.ssh/authorized_keys` with the prefix `restrict `. Add the **private** key to GitHub as the secret listed below.
 5. From a trusted Pi terminal, get its OpenSSH public host key with `sudo cat /etc/ssh/ssh_host_ed25519_key.pub`. Copy that full line into the `PI_SSH_HOST_KEY` GitHub Actions variable so the runner verifies the Pi's identity.
@@ -107,8 +110,9 @@ Under **Settings → Secrets and variables → Actions**, add these repository s
 | `TS_AUTH_KEY` | Secret | Reusable, ephemeral Tailscale auth key for the CI runner |
 | `PI_SSH_HOST_KEY` | Variable | Pi's public OpenSSH host key |
 | `SPORTBOSS_COMPOSE_PROJECT` | Variable | Optional existing Pi Compose project, default `sportboss` |
+| `SPORTBOSS_PI_REPO_PATH` | Variable | Optional absolute path to the Pi checkout, default `$HOME/apps/SportBoss` |
 
-Push the updated workflow to `main`, then check **Actions → Test and deploy SportBoss**. Deployments run automatically once the five secrets and the public host-key variable are configured. The deploy job ships tracked application files. Your Pi keeps its `.env`, TypeSafe and Telegram credentials, and SQLite volume. If health checks fail after a successful automated deployment, the script attempts to restore the previous source release using the same data volume. Keep database backups for data recovery.
+Push the updated workflow to `main`, then check **Actions → Test and deploy SportBoss**. Deployments run automatically once the five secrets and the public host-key variable are configured. The Pi fast-forwards its checkout and stops if there are local edits or divergent commits. Docker Compose uses the checkout's `.env` and the existing data volume. If a newly pulled revision fails its health checks, the script attempts to restore the previous revision using the same volume. Keep database backups for data recovery.
 
 ### TypeSafe AI
 
