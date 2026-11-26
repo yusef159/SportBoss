@@ -72,6 +72,8 @@ let activeValues = { kg: 0, reps: 10 };
 let activeKey;
 let trendId;
 let trendMetric;
+let trendReps;
+let trendSelection;
 let trendPoints;
 let trendRequest = 0;
 let recap;
@@ -397,20 +399,85 @@ function libraryPage() {
     option('', 'All routine statuses', filters.routine) + option('included', 'Included', filters.routine) +
     option('excluded', 'Excluded', filters.routine) + '</select></div><div id="library-results">' + libraryGrid() + '</div>';
 }
+const trendMeasures = {
+  weight: ['Working weight', 'kg'], kg: ['Estimated 1RM', 'kg'],
+  reps: ['Repetitions', 'reps'], seconds: ['Hold time', 'sec'],
+};
+const trendNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+function trendAxis(values, fractional) {
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const ideal = (high - low || Math.max(high * .15, 1)) / 3;
+  const scale = 10 ** Math.floor(Math.log10(ideal));
+  const step = Math.max(fractional ? .5 : 1, [1, 2, 5, 10].find(size => size * scale >= ideal) * scale);
+  const bottom = Math.max(0, Math.floor((low - step * .35) / step));
+  const top = Math.ceil((high + step * .35) / step);
+  const levels = Array.from({ length: top - bottom + 1 }, (_, index) => (top - index) * step);
+  const height = value => (top - value / step) / (top - bottom) * 100;
+  return { levels, height };
+}
+function trendGraph(series, unit) {
+  const { levels, height } = trendAxis(series.map(point => point.value), unit === 'kg');
+  const datesAt = limit => {
+    const count = Math.min(series.length, limit);
+    return new Set(Array.from({ length: count }, (_, index) =>
+      count > 1 ? Math.round(index * (series.length - 1) / (count - 1)) : 0));
+  };
+  const dates = datesAt(5);
+  const compactDates = datesAt(3);
+  const points = series.map((point, index) => ({
+    ...point, x: series.length === 1 ? 50 : 4 + index * 92 / (series.length - 1), y: height(point.value),
+    label: dateShort(point.day) + ' · ' + workoutClock.format(point.finished) + ' · ' + trendNumber.format(point.value) + ' ' + unit,
+  }));
+  const selected = points[trendSelection] ? trendSelection : points.length - 1;
+  const path = points.map(point => point.x + ',' + point.y).join(' ');
+  const pointButtons = points.map(({ x, y, label }, index) =>
+    '<button type="button" class="trend-point" data-action="trend-point" data-index="' + index + '" style="--x:' + x +
+    '%;--y:' + y + '%" aria-pressed="' + (index === selected) + '" aria-label="' + safe(label) + '" title="' + safe(label) + '"></button>').join('');
+  const dateLabels = points.map(({ x, day }, index) => dates.has(index)
+    ? '<span class="' + (compactDates.has(index) ? '' : 'trend-extra-date') + '" style="--x:' + x + '%">' + dateShort(day) + '</span>' : '').join('');
+  return '<div class="trend-graph"><div class="trend-axis" aria-hidden="true">' + levels.map(value =>
+    '<span style="--y:' + height(value) + '%">' + trendNumber.format(value) + ' ' + unit + '</span>').join('') +
+    '</div><div class="trend-plot" role="group" aria-label="Progress by workout" style="--point-width:' +
+    (points.length > 1 ? 92 / (points.length - 1) + '%' : '34px') + '">' +
+    '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
+    levels.map(value => '<line x1="0" y1="' + height(value) + '" x2="100" y2="' + height(value) +
+      '" vector-effect="non-scaling-stroke"/>').join('') +
+    (points.length > 1 ? '<polyline points="' + path + '" vector-effect="non-scaling-stroke"/>' : '') +
+    '</svg>' + pointButtons + '</div><div class="trend-dates" aria-hidden="true">' + dateLabels + '</div></div>' +
+    '<p id="trend-reading" class="trend-reading" aria-live="polite">' + safe(points[selected].label) + '</p>';
+}
 function trends() {
-  const points = trendPoints || [];
-  const units = { kg: 'Estimated 1RM (kg)', reps: 'Repetitions', seconds: 'Hold time (seconds)' };
-  const metrics = [...new Set(points.map(point => point.metric))];
-  if (!metrics.includes(trendMetric)) trendMetric = metrics.find(metric => metric === 'kg') || metrics[0];
-  const series = points.filter(point => point.metric === trendMetric);
-  const largest = Math.max(1, ...series.map(point => point.value));
-  const chart = '<div class="chart-scroll"><div class="chart" role="list" aria-label="' + safe(units[trendMetric]) + '">' + series.map(point =>
-    '<div role="listitem" class="bar-column" aria-label="' + dateShort(point.day) + ', ' + point.value + '"><strong>' + point.value +
-    '</strong><span class="bar" style="--height:' + (point.value / largest * 100) + '%"></span><small>' + dateShort(point.day) + '</small></div>').join('') + '</div></div>';
-  return '<div class="trend-controls">' + (metrics.length > 1 ? '<select id="metric" aria-label="Strength measurement">' +
-    metrics.map(metric => option(metric, units[metric], trendMetric)).join('') + '</select>' : '<span class="hint">' +
-    safe(units[trendMetric]) + '</span>') + '</div>' + (series.length ? chart :
-    '<div class="empty">' + (trendPoints ? 'No completed sets for this exercise.' : 'Loading progression…') + '</div>');
+  if (!trendPoints?.length) {
+    return '<div class="empty">' + (trendPoints ? 'No completed sets for this exercise.' : 'Loading progression…') + '</div>';
+  }
+  const metrics = Object.keys(trendMeasures).filter(metric => trendPoints.some(point => point.metric === metric));
+  if (!metrics.includes(trendMetric)) trendMetric = metrics[0];
+  let series = trendPoints.filter(point => point.metric === trendMetric);
+  const [measure, unit] = trendMeasures[trendMetric];
+  let repOptions = [];
+  if (trendMetric === 'weight') {
+    const appearances = new Map();
+    for (const point of [...series].reverse()) appearances.set(point.reps, (appearances.get(point.reps) || 0) + 1);
+    if (!appearances.has(trendReps)) trendReps = [...appearances].sort((a, b) => b[1] - a[1])[0][0];
+    repOptions = [...appearances.keys()].sort((a, b) => a - b);
+    series = series.filter(point => point.reps === trendReps);
+  }
+  const latest = series.at(-1).value;
+  const first = series[0].value;
+  const change = series.length > 1 && first > 0 ? Math.round((latest - first) / first * 1000) / 10 : null;
+  const controls = (metrics.length > 1 ? '<select id="metric" aria-label="Progress measurement">' +
+    metrics.map(metric => option(metric, trendMeasures[metric][0], trendMetric)).join('') + '</select>' : '') +
+    (repOptions.length > 1 ? '<select id="trend-reps" aria-label="Repetitions per set">' +
+      repOptions.map(reps => option(reps, reps + ' reps', trendReps)).join('') + '</select>' : '');
+  const comparison = change === null
+    ? (series.length === 1 ? '<span class="trend-baseline">First recorded workout</span>' : '')
+    : '<span class="trend-change' + (change > 0 ? ' gain' : change < 0 ? ' loss' : '') +
+      '" title="Change from the first workout shown">' + (change > 0 ? '+' : '') + change + '%</span>';
+  return (controls ? '<div class="trend-controls">' + controls + '</div>' : '') +
+    '<p class="trend-measure">' + measure + (trendMetric === 'weight' ? ' at ' + trendReps + ' repetitions' : '') + '</p>' +
+    '<div class="trend-summary"><strong>' + trendNumber.format(latest) + ' ' + unit + '</strong>' + comparison + '</div>' +
+    trendGraph(series, unit);
 }
 function progressPage() {
   const { history, records } = data.progress;
@@ -427,7 +494,7 @@ function progressPage() {
       '</small></span><strong>' + (record.kg ? record.kg + ' kg × ' : '') + record.reps + (exercise.timed ? 's' : ' reps') + '</strong></div>';
   }).join('');
   return title('Progress', 'See your strength, personal records and training history.') +
-    '<div class="dashboard"><div class="dashboard-main progress-main"><section class="panel widget"><div class="widget-title"><span class="icon-box">' +
+    '<div class="dashboard"><div class="dashboard-main progress-main"><section class="panel widget progression"><div class="widget-title"><span class="icon-box">' +
     icon('progress') + '</span><h2>Strength progression</h2></div>' +
     (ids.length ? '<select id="trend" aria-label="Exercise progression">' + ids.map(id => option(id, exercises.get(id).name, trendId)).join('') +
       '</select><div id="trend-content">' + trends() + '</div>' : '<div class="empty">Complete your first workout to see your strength trend.</div>') +
@@ -560,6 +627,13 @@ document.addEventListener('click', async event => {
     return;
   }
   if (action === 'close') { dialog.close(); return; }
+  if (action === 'trend-point') {
+    control.closest('.trend-plot').querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false');
+    control.setAttribute('aria-pressed', 'true');
+    trendSelection = Number(control.dataset.index);
+    document.querySelector('#trend-reading').textContent = control.getAttribute('aria-label');
+    return;
+  }
   if (action === 'view-photo') {
     const exercise = exercises.get(control.dataset.id);
     showDialog(safe(exercise.name), '<img class="full-photo" src="' + safe(exercise.image) + '" alt="' +
@@ -679,8 +753,19 @@ document.addEventListener('change', event => {
     filters[id] = value;
     document.querySelector('#library-results').innerHTML = libraryGrid();
   }
-  if (id === 'trend') { trendId = value; trendPoints = undefined; trendMetric = undefined; render(); }
-  if (id === 'metric') { trendMetric = value; document.querySelector('#trend-content').innerHTML = trends(); }
+  if (id === 'trend') {
+    trendId = value;
+    trendPoints = trendMetric = trendReps = trendSelection = undefined;
+    render();
+    document.querySelector('#trend')?.focus({ preventScroll: true });
+  }
+  if (id === 'metric' || id === 'trend-reps') {
+    if (id === 'metric') trendMetric = value;
+    else trendReps = Number(value);
+    trendSelection = undefined;
+    document.querySelector('#trend-content').innerHTML = trends();
+    document.getElementById(id)?.focus({ preventScroll: true });
+  }
 });
 document.addEventListener('submit', async event => {
   if (event.target.id !== 'settings-form') return;

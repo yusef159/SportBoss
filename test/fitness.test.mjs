@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { byId, catalog, equipment } from '../lib/catalog.mjs';
 import { candidates, defaults, estimatedMinutes, rotation, selectPlan } from '../lib/planner.mjs';
-import { localTime, openDatabase } from '../lib/storage.mjs';
+import { exerciseTrend, localTime, openDatabase } from '../lib/storage.mjs';
 import { createApp } from '../server.mjs';
 import { sendDueReminder } from '../reminders.mjs';
 
@@ -97,6 +97,31 @@ test('Jev chooses a credible alternative and falls back on invalid responses', a
 test('Jerusalem dates account for daylight saving and local midnight', () => {
   assert.deepEqual(localTime(Date.parse('2026-07-01T21:10:00Z')), { day: '2026-07-02', time: '00:10' });
   assert.deepEqual(localTime(Date.parse('2026-01-01T21:10:00Z')), { day: '2026-01-01', time: '23:10' });
+});
+
+test('the working-weight trend uses the best logged weight for each rep count per completed workout', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'sportboss-trend-'));
+  const db = openDatabase(directory);
+  t.after(async () => { db.close(); await rm(directory, { recursive: true, force: true }); });
+  const exercise = 'goblet-squat';
+  const addWorkout = db.prepare("INSERT INTO workouts(kind,plan,source,started,finished) VALUES('lower','[]','rules',?,?)");
+  const addSet = db.prepare('INSERT INTO sets VALUES(?, ?, ?, ?, ?)');
+  const first = Date.parse('2026-11-25T13:00:00Z');
+  const second = first + 3600000;
+  const session = addWorkout.run(first - 60000, first).lastInsertRowid;
+  addSet.run(session, 0, exercise, 14, 12);
+  addSet.run(session, 1, exercise, 16, 12);
+  addSet.run(session, 2, exercise, 24, 8);
+  const later = addWorkout.run(second - 60000, second).lastInsertRowid;
+  addSet.run(later, 0, exercise, 22, 12);
+  const unfinished = addWorkout.run(second + 60000, null).lastInsertRowid;
+  addSet.run(unfinished, 0, exercise, 30, 12);
+  const history = exerciseTrend(db, exercise);
+  const at12 = history.filter(point => point.metric === 'weight' && point.reps === 12);
+  assert.deepEqual(at12.map(point => [point.finished, point.value]), [[first, 16], [second, 22]]);
+  assert.equal(at12[0].day, at12[1].day);
+  assert.equal(history.find(point => point.metric === 'weight' && point.reps === 8).value, 24);
+  assert.equal(history.filter(point => point.metric === 'kg').length, 2);
 });
 
 test('reminders send once per scheduled Jerusalem day and skip completed days', async t => {
