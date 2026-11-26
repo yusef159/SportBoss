@@ -1,0 +1,218 @@
+<style>
+  #sportboss-set-layouts .preview-stage {
+    display: grid;
+    place-items: center;
+    min-height: 340px;
+    padding: 12px 0;
+  }
+  #sportboss-set-layouts .preview-stage[hidden] { display: none; }
+  #sportboss-set-layouts .set-screen {
+    color-scheme: dark;
+    --screen: #171816;
+    --surface: #222320;
+    --line: #363932;
+    --ink: #f3f4ef;
+    --muted: #aeb2a8;
+    --action: #69d887;
+    box-sizing: border-box;
+    width: min(100%, 378px);
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--screen);
+    color: var(--ink);
+    font: 15px/1.4 system-ui, sans-serif;
+  }
+  #sportboss-set-layouts .set-screen * { box-sizing: border-box; }
+  #sportboss-set-layouts .exercise { display: grid; gap: 3px; margin-bottom: 14px; }
+  #sportboss-set-layouts .exercise h3 { margin: 0; color: var(--ink); font-size: 20px; }
+  #sportboss-set-layouts .caption { color: var(--muted); font-size: 13px; }
+  #sportboss-set-layouts .set-screen button {
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 650;
+  }
+  #sportboss-set-layouts .set-screen button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+  #sportboss-set-layouts .set-screen button.complete {
+    width: 100%;
+    margin-top: 12px;
+    border-color: var(--action);
+    background: var(--action);
+    color: #142219;
+  }
+  #sportboss-set-layouts .set-screen button:disabled { opacity: .6; }
+  #sportboss-set-layouts .fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #sportboss-set-layouts .field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 8px 4px 4px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    text-align: center;
+  }
+  #sportboss-set-layouts .step {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+  }
+  #sportboss-set-layouts .step button { border-color: transparent; font-size: 22px; font-weight: 400; }
+  #sportboss-set-layouts .step input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    appearance: textfield;
+  }
+  #sportboss-set-layouts input::-webkit-inner-spin-button { appearance: none; }
+  #sportboss-set-layouts .saved-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  #sportboss-set-layouts .saved-line strong { font-size: 20px; }
+  #sportboss-set-layouts .saved-line button { padding-inline: 12px; }
+  #sportboss-set-layouts .set-screen [hidden] { display: none; }
+  #sportboss-set-layouts .edit-fields { margin-top: 10px; }
+  #sportboss-set-layouts .ruler-panel { padding: 8px 12px; }
+  #sportboss-set-layouts .ruler-panel input { width: 100%; height: 32px; margin: 0; accent-color: var(--action); }
+  #sportboss-set-layouts .rep-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  #sportboss-set-layouts .rep-row .step { width: 144px; }
+  #sportboss-set-layouts .dock { margin: 5px -16px -16px; padding: 8px 16px 12px; border-top: 1px solid var(--line); background: var(--surface); border-radius: 0 0 17px 17px; }
+  #sportboss-set-layouts .dock button.complete { margin-top: 0; }
+</style>
+<div id="sportboss-set-layouts" class="viz-carousel viz-dotted-background" aria-label="SportBoss set logging designs">
+  <section class="preview-stage" data-variant="Compact controls" aria-label="Compact controls">
+    <div class="set-screen">
+      <header class="exercise">
+        <span class="caption" data-set aria-live="polite">Set 1 of 3</span>
+        <h3>Dumbbell Bench Press</h3>
+      </header>
+      <div class="fields">
+        <div class="field">
+          <label class="caption" for="compact-weight">Weight (kg)</label>
+          <div class="step">
+            <button type="button" data-step="-1" data-for="compact-weight" aria-label="Decrease weight">−</button>
+            <input id="compact-weight" data-weight type="number" min="0" max="300" step="0.5" value="12.5" inputmode="decimal">
+            <button type="button" data-step="1" data-for="compact-weight" aria-label="Increase weight">+</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="caption" for="compact-reps">Reps</label>
+          <div class="step">
+            <button type="button" data-step="-1" data-for="compact-reps" aria-label="Decrease reps">−</button>
+            <input id="compact-reps" data-reps type="number" min="1" max="100" step="1" value="10" inputmode="numeric">
+            <button type="button" data-step="1" data-for="compact-reps" aria-label="Increase reps">+</button>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="complete">Complete set</button>
+    </div>
+  </section>
+  <section class="preview-stage" data-variant="Quick log" aria-label="Quick log" hidden>
+    <div class="set-screen">
+      <header class="exercise">
+        <span class="caption" data-set aria-live="polite">Set 1 of 3</span>
+        <h3>Dumbbell Bench Press</h3>
+      </header>
+      <div class="saved-line">
+        <strong data-summary>12.5 kg × 10 reps</strong>
+        <button type="button" data-edit aria-expanded="false" aria-controls="quick-edit-fields">Edit</button>
+      </div>
+      <div class="fields edit-fields" id="quick-edit-fields" hidden>
+        <div class="field">
+          <label class="caption" for="quick-weight">Weight (kg)</label>
+          <div class="step">
+            <button type="button" data-step="-1" data-for="quick-weight" aria-label="Decrease weight">−</button>
+            <input id="quick-weight" data-weight type="number" min="0" max="300" step="0.5" value="12.5" inputmode="decimal">
+            <button type="button" data-step="1" data-for="quick-weight" aria-label="Increase weight">+</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="caption" for="quick-reps">Reps</label>
+          <div class="step">
+            <button type="button" data-step="-1" data-for="quick-reps" aria-label="Decrease reps">−</button>
+            <input id="quick-reps" data-reps type="number" min="1" max="100" step="1" value="10" inputmode="numeric">
+            <button type="button" data-step="1" data-for="quick-reps" aria-label="Increase reps">+</button>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="complete">Complete set</button>
+    </div>
+  </section>
+  <section class="preview-stage" data-variant="Pinned button" aria-label="Pinned button" hidden>
+    <div class="set-screen">
+      <header class="exercise">
+        <span class="caption" data-set aria-live="polite">Set 1 of 3</span>
+        <h3>Dumbbell Bench Press</h3>
+      </header>
+      <div class="field ruler-panel">
+        <label class="caption" for="pinned-weight">Weight</label>
+        <strong data-weight-label>12.5 kg</strong>
+        <input id="pinned-weight" data-weight type="range" min="0" max="30" step="0.5" value="12.5">
+      </div>
+      <div class="rep-row">
+        <label class="caption" for="pinned-reps">Reps</label>
+        <div class="step">
+          <button type="button" data-step="-1" data-for="pinned-reps" aria-label="Decrease reps">−</button>
+          <input id="pinned-reps" data-reps type="number" min="1" max="100" step="1" value="10" inputmode="numeric">
+          <button type="button" data-step="1" data-for="pinned-reps" aria-label="Increase reps">+</button>
+        </div>
+      </div>
+      <footer class="dock"><button type="button" class="complete">Complete set</button></footer>
+    </div>
+  </section>
+</div>
+<script>
+  (() => {
+    const root = document.getElementById('sportboss-set-layouts');
+    for (const screen of root.querySelectorAll('.set-screen')) {
+      const weight = screen.querySelector('[data-weight]');
+      const reps = screen.querySelector('[data-reps]');
+      const summary = screen.querySelector('[data-summary]');
+      const weightLabel = screen.querySelector('[data-weight-label]');
+      const complete = screen.querySelector('.complete');
+      let set = 1;
+      function update() {
+        complete.disabled = set > 3 || !weight.value || !reps.value ||
+          !weight.validity.valid || !reps.validity.valid;
+        if (summary) summary.textContent = weight.value + ' kg × ' + reps.value + ' reps';
+        if (weightLabel) weightLabel.textContent = weight.value + ' kg';
+      }
+      screen.addEventListener('input', update);
+      screen.addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        if (button.dataset.step) {
+          const input = document.getElementById(button.dataset.for);
+          input.stepUp(Number(button.dataset.step));
+          update();
+        }
+        if (button.hasAttribute('data-edit')) {
+          const fields = document.getElementById(button.getAttribute('aria-controls'));
+          fields.hidden = !fields.hidden;
+          button.setAttribute('aria-expanded', String(!fields.hidden));
+          button.textContent = fields.hidden ? 'Edit' : 'Done';
+        }
+        if (button === complete) {
+          set++;
+          screen.querySelector('[data-set]').textContent = set > 3 ? 'Exercise complete' : 'Set ' + set + ' of 3';
+          if (set > 3) complete.textContent = 'All sets logged';
+          update();
+        }
+      });
+    }
+  })();
+</script>

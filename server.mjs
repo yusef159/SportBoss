@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { byId, catalog, equipment, kinds, prescribe } from './lib/catalog.mjs';
+import { byId, catalog, equipment, kinds, swapPrescription } from './lib/catalog.mjs';
 import { candidates, durationOptions, selectPlan, swapOptions } from './lib/planner.mjs';
 import { startReminders } from './reminders.mjs';
 import {
@@ -148,7 +148,7 @@ async function api(db, request, path, typesafeKey, appState) {
       if (path === '/api/swaps') return options;
       const replacement = options.find(exercise => exercise.id === data.exercise);
       if (!replacement) fail('Select a compatible replacement.');
-      workout.plan[data.index] = { ...prescribe(replacement), sets: workout.plan[data.index].sets };
+      workout.plan[data.index] = swapPrescription(workout.plan[data.index], replacement);
       db.prepare('UPDATE workouts SET plan=? WHERE id=?').run(JSON.stringify(workout.plan), workout.id);
       const saved = db.prepare('SELECT content FROM workout_reviews WHERE workout=?').get(workout.id);
       const review = saved ? JSON.parse(saved.content) : {};

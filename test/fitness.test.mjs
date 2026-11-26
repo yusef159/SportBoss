@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { byId, catalog, equipment } from '../lib/catalog.mjs';
-import { candidates, defaults, estimatedMinutes, rotation, selectPlan } from '../lib/planner.mjs';
-import { exerciseTrend, localTime, openDatabase } from '../lib/storage.mjs';
+import { byId, catalog, eligible, equipment } from '../lib/catalog.mjs';
+import { candidates, defaults, durationOptions, estimatedWorkoutMinutes, rotation, selectPlan, swapOptions } from '../lib/planner.mjs';
+import { describeWorkout, exerciseTrend, localTime, openDatabase } from '../lib/storage.mjs';
 import { createApp } from '../server.mjs';
 import { sendDueReminder } from '../reminders.mjs';
 
@@ -62,7 +62,7 @@ test('workout length changes set counts and adds exercises while retaining the b
     assert.ok(setCount(short) < setCount(standard));
     assert.ok(long.length > standard.length);
     assert.ok(setCount(long) > setCount(standard));
-    assert.ok(Math.abs(estimatedMinutes(long.length, setCount(long), defaults.rest) - 60) <= 2);
+    assert.ok(Math.abs(estimatedWorkoutMinutes(long, defaults.rest) - 60) <= 2);
     const required = standard.slice(0, kind === 'full' ? 4 : 2).map(item => byId.get(item.id).bucket);
     for (const plan of extended) {
       assert.equal(new Set(plan.map(item => item.id)).size, plan.length);
@@ -70,6 +70,90 @@ test('workout length changes set counts and adds exercises while retaining the b
       assert.ok(plan.every(item => item.id !== standard[0].id && item.sets >= 2 && item.sets <= 4));
     }
   }
+});
+
+test('short upper and lower sessions keep all required exercises and adjust reps or hold times', () => {
+  const onlyTimedAbs = catalog.filter(exercise => exercise.muscle === 'Abs' && !exercise.timed).map(({ id }) => id);
+  for (const [kind, count] of [['upper', 6], ['lower', 5]]) {
+    const [standard] = candidates(kind, defaults.gear, []);
+    for (const rest of [15, defaults.rest, 180]) {
+      const plans = candidates(kind, defaults.gear, [], onlyTimedAbs, { duration: 30, rest });
+      for (const plan of plans) {
+        assert.equal(plan.length, count);
+        assert.deepEqual(plan.map(({ id }) => byId.get(id).muscle), standard.map(({ id }) => byId.get(id).muscle));
+        assert.ok(plan.some(({ id, reps }) => !byId.get(id).timed && reps !== 10));
+        assert.ok(plan.some(({ id, reps }) => byId.get(id).timed && reps !== 30));
+        const estimate = estimatedWorkoutMinutes(plan, rest);
+        if (rest === 180) assert.ok(estimate > 30);
+        else assert.ok(Math.abs(estimate - 30) <= 2);
+      }
+    }
+    const [long] = candidates(kind, defaults.gear, [], [], { duration: 75 });
+    assert.ok(long.length > count);
+  }
+});
+
+test('every upper-body candidate and its swaps preserve all six muscle groups', () => {
+  const required = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Abs'];
+  for (const gear of [defaults.gear, ['Bodyweight', 'Cable']]) {
+    const pool = eligible(gear);
+    for (const duration of durationOptions) {
+      for (const plan of candidates('upper', gear, [], [], { duration })) {
+        assert.deepEqual(plan.slice(0, 6).map(({ id }) => byId.get(id).muscle), required);
+        const used = new Set(plan.map(({ id }) => id));
+        for (const [index, muscle] of required.entries()) {
+          const swaps = swapOptions('upper', plan, index, gear, []);
+          const expected = pool.filter(exercise => exercise.muscle === muscle && !used.has(exercise.id));
+          assert.deepEqual(new Set(swaps), new Set(expected), muscle);
+        }
+      }
+    }
+  }
+  const triceps = catalog.filter(exercise => exercise.muscle === 'Triceps').map(({ id }) => id);
+  assert.throws(() => candidates('upper', defaults.gear, [], triceps), /No eligible exercises for Triceps/);
+
+  const savedPlan = [
+    'alternating-dumbbell-bench-press', 'alternating-dumbbell-row', 'alternating-dumbbell-curl',
+    'alternating-front-raise', 'bent-knee-leg-raise', 'flat-dumbbell-bench-press',
+  ].map(id => ({ id }));
+  const legacySwaps = swapOptions('upper', savedPlan, 5, defaults.gear, []);
+  assert.ok(legacySwaps.length);
+  assert.ok(legacySwaps.every(exercise => ['push', 'pull'].includes(exercise.bucket)));
+});
+
+test('lower-body candidates and swaps cover quads, hamstrings, glutes, calves and abs', () => {
+  const required = ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Abs'];
+  const target = exercise => exercise.pattern === 'Hip hinge' ? 'Hamstrings' : exercise.muscle;
+  for (const gear of [defaults.gear, equipment]) {
+    const pool = eligible(gear);
+    for (const duration of durationOptions) {
+      for (const plan of candidates('lower', gear, [], [], { duration })) {
+        assert.deepEqual(plan.slice(0, 5).map(({ id }) => target(byId.get(id))), required);
+        const used = new Set(plan.map(({ id }) => id));
+        for (const [index, muscle] of required.entries()) {
+          const swaps = swapOptions('lower', plan, index, gear, []);
+          const expected = pool.filter(exercise => exercise.region !== 'upper' &&
+            target(exercise) === muscle && !used.has(exercise.id));
+          assert.deepEqual(new Set(swaps), new Set(expected), muscle);
+        }
+      }
+    }
+  }
+
+  const hinges = catalog.filter(exercise => exercise.pattern === 'Hip hinge').map(({ id }) => id);
+  const calves = catalog.filter(exercise => exercise.muscle === 'Calves').map(({ id }) => id);
+  const [withLegCurl] = candidates('lower', equipment, [], hinges);
+  assert.equal(withLegCurl[1].id, 'leg-curl');
+  assert.throws(() => candidates('lower', defaults.gear, [], [...hinges, ...calves]),
+    /No eligible exercises for Hamstrings, Calves/);
+
+  const savedPlan = [
+    'bulgarian-split-squat', 'dumbbell-hang-clean', 'seated-dumbbell-calf-raise',
+    'dumbbell-hip-thrust', 'bent-knee-leg-raise',
+  ].map(id => ({ id }));
+  const legacySwaps = swapOptions('lower', savedPlan, 1, defaults.gear, []);
+  assert.ok(legacySwaps.length);
+  assert.ok(legacySwaps.every(exercise => exercise.bucket === 'hip'));
 });
 
 test('Jev chooses a credible alternative and falls back on invalid responses', async () => {
@@ -255,6 +339,7 @@ test('duration settings reach the workout preview and swaps keep the scheduled s
   t.after(async () => { await stop(); await rm(directory, { recursive: true, force: true }); });
   const [status, settings] = await request('/api/settings', { ...defaults, duration: 60 });
   assert.equal(status, 200);
+  assert.equal(settings.standardCounts.upper, 6);
   assert.equal(settings.settings.duration, 60);
   const [generated, { pending }] = await request('/api/generate', { kind: 'upper' });
   assert.equal(generated, 200);
@@ -271,6 +356,19 @@ test('duration settings reach the workout preview and swaps keep the scheduled s
   assert.equal(updated.pending.totalSets, pending.totalSets);
   const extraIndex = pending.plan.length - 1;
   assert.equal((await request('/api/swaps', { id: pending.id, index: extraIndex, from: pending.plan[extraIndex].id }))[0], 200);
+
+  await request('/api/discard', { id: pending.id });
+  await request('/api/settings', { ...defaults, duration: 30, rest: 15 });
+  const [, { pending: short }] = await request('/api/generate', { kind: 'upper' });
+  assert.equal(short.plan.length, 6);
+  assert.equal(short.estimatedMinutes, estimatedWorkoutMinutes(short.plan, 15));
+  const first = short.plan[0];
+  assert.ok(first.reps < 10);
+  const firstSwap = { id: short.id, index: 0, from: first.id };
+  const [, shortChoices] = await request('/api/swaps', firstSwap);
+  const [, afterSwap] = await request('/api/swap', { ...firstSwap, exercise: shortChoices[0].id });
+  assert.equal(afterSwap.pending.plan[0].sets, first.sets);
+  assert.equal(afterSwap.pending.plan[0].reps, first.reps);
 });
 
 test('weight prefill remembers the latest set of the same exercise', async t => {
@@ -287,6 +385,8 @@ test('weight prefill remembers the latest set of the same exercise', async t => 
   insertSet.run(recent, 1, exercise, 7.5, 9);
   insertSet.run(recent, 2, exercise, 10.5, 8);
   const id = insertWorkout.run(plan, null, null).lastInsertRowid;
+  const adjusted = describeWorkout(db, { id, plan: [{ id: exercise, sets: 2, reps: 7 }] });
+  assert.deepEqual(adjusted.prefill, { kg: 10.5, reps: 7 });
   db.close();
   const server = await startServer(directory);
   t.after(async () => { await server.stop(); await rm(directory, { recursive: true, force: true }); });

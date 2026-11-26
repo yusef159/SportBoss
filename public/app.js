@@ -28,11 +28,12 @@ const icons = {
 };
 const icon = (name, size = 20) => '<svg aria-hidden="true" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (icons[name] || icons.dumbbell) + '</svg>';
 const labels = { upper: 'Upper Body', lower: 'Lower Body', full: 'Full Body' };
-const descriptions = { upper: 'Chest, back, shoulders & arms', lower: 'Quads, hamstrings, glutes & calves', full: 'Upper and lower body in one session' };
+const descriptions = { upper: 'Chest, back, shoulders, biceps, triceps & abs', lower: 'Quads, hamstrings, glutes, calves & abs', full: 'Upper and lower body in one session' };
 const gearOptions = ['Bodyweight', 'Dumbbells', 'Bench', 'Cable', 'Machine'];
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
 const notice = document.querySelector('#notice');
+const exercisePopup = document.querySelector('#exercise-popup');
 const safe = value => String(value ?? '').replace(/[&<>"']/g, mark => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[mark]);
 const dateText = (day, options) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...options }).format(new Date(day + 'T12:00:00Z'));
 const dateLong = day => dateText(day, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -63,6 +64,7 @@ let view = metaView();
 let busy = false;
 let timer;
 let toastTimer;
+let exercisePopupTimer;
 let restAlarm;
 let restDeadline = null;
 let audioContext;
@@ -88,6 +90,14 @@ function notify(message) {
   notice.classList.add('visible');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => notice.classList.remove('visible'), 4200);
+}
+function showExerciseComplete(exerciseId) {
+  const exercise = exercises.get(exerciseId);
+  if (!exercise) return;
+  clearTimeout(exercisePopupTimer);
+  exercisePopup.innerHTML = '<div class="exercise-popup-card"><span class="exercise-popup-check">' + icon('check', 26) +
+    '</span><strong>Exercise complete</strong><span>' + safe(exercise.name) + '</span></div>';
+  exercisePopupTimer = setTimeout(() => exercisePopup.replaceChildren(), 2400);
 }
 function enableWorkoutAudio() {
   const Context = window.AudioContext || window.webkitAudioContext;
@@ -201,7 +211,7 @@ function today() {
     '<div class="dashboard"><div class="dashboard-main"><section class="hero panel"><div class="hero-image"></div><div class="hero-copy"><span class="eyebrow">' +
     icon('target', 15) + (pick === data.recommendation ? 'Recommended workout' : 'Selected workout') +
     '</span><h2>' + labels[pick] + '</h2><p>' + descriptions[pick] + '</p><div class="hero-metrics">' +
-    (target ? '' : '<span>' + icon('dumbbell', 17) + (pick === 'full' ? '6' : '5') + ' exercises</span>') +
+    (target ? '' : '<span>' + icon('dumbbell', 17) + data.standardCounts[pick] + ' exercises</span>') +
     '<span>' + icon('clock', 16) + (target ? target + ' min target' : 'About ' + data.standardEstimates[pick] + ' min') +
     '</span></div>' + button('Generate workout', 'generate', 'play') + '<p class="ai-status">' +
     (data.aiConfigured ? 'TypeSafe AI review configured' : 'Rule-based planning · TypeSafe AI is off') + '</p></div></section>' +
@@ -265,6 +275,12 @@ function minutesSeconds(totalSeconds) {
 function restFill(remainingMs, totalSeconds) {
   return Math.min(100, Math.max(0, remainingMs / (totalSeconds * 10))) + '%';
 }
+function restIsEnding(seconds) {
+  return seconds > 0 && seconds <= 10;
+}
+function restTitle(ending) {
+  return ending ? 'Get ready for the next set' : 'Rest between sets';
+}
 function trainingHeader(workout, exerciseNumber) {
   const steps = [
     ['Exercise', 'dumbbell', exerciseNumber, workout.plan.length],
@@ -287,6 +303,7 @@ function training(workout) {
   }
   const remainingRest = Math.max(0, (workout.rest_until ?? 0) - Date.now());
   const rest = Math.ceil(remainingRest / 1000);
+  const restEnding = restIsEnding(rest);
   const exerciseIndex = workout.plan.findIndex(slot => slot.id === next.id);
   const weight = item.gear.includes('Bodyweight') ? '' :
     '<div class="weight-control"><div class="control-label">Weight</div><div class="weight-value"><strong id="weight-val">' +
@@ -301,16 +318,17 @@ function training(workout) {
     safe(item.muscle) + '</div><h2>' + safe(item.name) + '</h2><p>' + safe(item.pattern) + ' · ' + safe(item.gear.join(' + ')) +
     '</p><p class="previous">' + (workout.previous ? 'Last session · ' + (workout.previous.kg ? workout.previous.kg + ' kg × ' : '') +
     workout.previous.reps + (item.timed ? ' sec' : ' reps') : 'First session for this exercise') + '</p></div></div>' +
+    '<section id="rest-banner" class="rest-banner' + (restEnding ? ' rest-ending' : '') + '" aria-labelledby="rest-title" ' + (rest ? '' : 'hidden') +
+    '><div class="rest-ring" style="--rest-fill:' + restFill(remainingRest, data.settings.rest) +
+    '"><strong id="rest-count" role="timer" aria-label="Rest time remaining">' + minutesSeconds(rest) +
+    '</strong></div><div class="rest-copy"><h3 id="rest-title" aria-live="polite">' + restTitle(restEnding) + '</h3><p>Next up <span>' + safe(item.name) +
+    '</span></p></div>' + button('Skip rest', 'skip-rest', null, 'secondary compact') + '</section>' +
+    button('Complete set', 'complete', 'check', 'primary complete', rest ? 'disabled' : '') +
     '<div class="set-controls">' + weight + '<div class="rep-control"><span class="control-label">' + (item.timed ? 'Duration' : 'Repetitions') +
     '</span><div class="stepper">' + button('Decrease', 'rep-minus', 'minus', 'secondary icon-only') +
     '<strong id="rep-val">' + activeValues.reps + (item.timed ? 's' : '') + '</strong>' +
-    button('Increase', 'rep-plus', 'plus', 'secondary icon-only') + '</div></div></div>' +
-    '<section id="rest-banner" class="rest-banner" aria-labelledby="rest-title" ' + (rest ? '' : 'hidden') +
-    '><div class="rest-ring" style="--rest-fill:' + restFill(remainingRest, data.settings.rest) +
-    '"><strong id="rest-count" role="timer" aria-label="Rest time remaining">' + minutesSeconds(rest) +
-    '</strong></div><div class="rest-copy"><h3 id="rest-title">Rest between sets</h3><p>Next up <span>' + safe(item.name) +
-    '</span></p></div>' + button('Skip rest', 'skip-rest', null, 'secondary compact') +
-    '</section><footer>' + button('Complete set', 'complete', 'check', 'primary complete', rest ? 'disabled' : '') + '</footer></section>';
+    button('Increase', 'rep-plus', 'plus', 'secondary icon-only') + '</div><p class="hint">Target ' +
+    next.reps + (item.timed ? ' sec' : ' reps') + '</p></div></div></section>';
 }
 function wireTraining() {
   const ruler = document.querySelector('#ruler');
@@ -349,17 +367,23 @@ function wireTraining() {
   if (!restBanner.hidden) {
     const ring = restBanner.querySelector('.rest-ring');
     const countdown = restBanner.querySelector('#rest-count');
+    const title = restBanner.querySelector('#rest-title');
     timer = setInterval(() => {
       const remaining = Math.max(0, data.pending.rest_until - Date.now());
       const seconds = Math.ceil(remaining / 1000);
       const display = minutesSeconds(seconds);
       if (countdown.textContent !== display) countdown.textContent = display;
       ring.style.setProperty('--rest-fill', restFill(remaining, data.settings.rest));
+      const ending = restIsEnding(seconds);
+      restBanner.classList.toggle('rest-ending', ending);
       if (!seconds) {
         clearInterval(timer);
         restBanner.hidden = true;
         document.querySelector('[data-action=complete]').disabled = false;
+        return;
       }
+      const titleText = restTitle(ending);
+      if (title.textContent !== titleText) title.textContent = titleText;
     }, 100);
   }
 }
@@ -527,7 +551,7 @@ function settingsPage() {
     '</div></fieldset><fieldset aria-describedby="duration-hint"><legend>Target workout length</legend><div class="settings-durations">' +
     data.durationOptions.map(minutes => '<label class="settings-choice duration-choice"><input type="radio" name="duration" value="' +
       minutes + '"' + (minutes === duration ? ' checked' : '') + '><span>' + (minutes ? minutes + ' min' : 'Auto') + '</span></label>').join('') +
-    '</div><p id="duration-hint" class="hint settings-hint">Applies to newly generated workouts.</p></fieldset>';
+    '</div><p id="duration-hint" class="hint settings-hint">New Upper and Lower Body workouts keep all required exercises. The target adjusts sets, reps or hold times and can add exercises for longer sessions.</p></fieldset>';
   const equipmentIcons = { Bodyweight: 'full', Dumbbells: 'dumbbell', Bench: 'bench', Cable: 'cable', Machine: 'machine' };
   const equipment = '<div class="gear-options">' + gearOptions.map(item => {
     const alwaysIncluded = item === 'Bodyweight';
@@ -690,8 +714,9 @@ document.addEventListener('click', async event => {
     if (action === 'skip-rest') await mutation('skip-rest', { id, until: workout.rest_until });
     if (action === 'complete') {
       await mutation('set', { id, ordinal: workout.sets.length, ...activeValues });
+      if (workout.next.set === workout.next.sets) showExerciseComplete(workout.next.id);
       if (recap) window.scrollTo(0, 0);
-      else document.querySelector('#rest-banner:not([hidden])')?.scrollIntoView({ block: 'nearest' });
+      else app.querySelector('#rest-banner:not([hidden])')?.scrollIntoView({ block: 'nearest' });
     }
     if (action === 'exercise-preference') {
       const exerciseId = control.dataset.exerciseId;
