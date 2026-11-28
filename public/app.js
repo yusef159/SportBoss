@@ -56,9 +56,13 @@ function duration(ms) {
 function workoutTiming({ started, finished }) {
   const startDate = workoutDate.format(started);
   const endDate = workoutDate.format(finished);
-  const time = value => '<time datetime="' + new Date(value).toISOString() + '">' + workoutClock.format(value) + '</time>';
-  return '<span class="workout-timing"><span>' + startDate + '</span><span>' + time(started) + ' – ' +
-    (startDate === endDate ? '' : endDate + ' ') + time(finished) + '</span></span>';
+  const startClock = workoutClock.format(started);
+  const endClock = workoutClock.format(finished);
+  const overnight = startDate !== endDate;
+  const time = (value, label) => '<time datetime="' + new Date(value).toISOString() + '">' + label + '</time>';
+  return '<span class="workout-timing"><span class="workout-timing-chip">' + icon('calendar', 14) + time(started, startDate) +
+    '</span><span class="workout-timing-chip">' + icon('clock', 14) + '<span>' + time(started, startClock) +
+    ' – ' + time(finished, (overnight ? endDate + ' ' : '') + endClock) + '</span></span></span>';
 }
 let data, library, exercises;
 let view = metaView();
@@ -70,15 +74,14 @@ let restAlarm;
 let restDeadline = null;
 let audioContext;
 let selectedKind;
-let filters = { search: '', equipment: '', region: '', routine: '' };
+let filters = { search: '', equipment: '', region: '', routine: '', sort: '' };
 let activeValues = { kg: 0, reps: 10 };
 let activeKey;
-let trendId;
-let trendMetric;
-let trendReps;
-let trendSelection;
-let trendPoints;
-let trendRequest = 0;
+let strengthData;
+let strengthRequest;
+let strengthError;
+let strengthRange = 'all';
+let strengthIndex;
 let recap;
 const stepWidth = 21;
 
@@ -414,21 +417,31 @@ function wireTraining() {
 function libraryGrid() {
   const used = data.progress.rotation;
   const excluded = new Set(data.settings.excluded);
+  const covered = new Set(Object.values(used).flatMap(scope => scope.used));
+  const cards = strengthData?.cards;
   const query = filters.search.trim().toLowerCase();
   const items = library.filter(item => {
     const searchable = [item.name, item.muscle, item.pattern, ...item.gear].join(' ').toLowerCase();
     return (!query || searchable.includes(query)) && (!filters.equipment || item.gear.includes(filters.equipment)) &&
       (!filters.region || item.region === filters.region) && (!filters.routine || excluded.has(item.id) === (filters.routine === 'excluded'));
   });
+  if (cards && filters.sort) items.sort((a, b) => {
+    const first = cards[a.id];
+    const second = cards[b.id];
+    if (filters.sort === 'recent') return (second?.lastPerformed ?? 0) - (first?.lastPerformed ?? 0);
+    if (first?.change == null) return second?.change == null ? 0 : 1;
+    if (second?.change == null) return -1;
+    return filters.sort === 'highest' ? second.change - first.change : first.change - second.change;
+  });
   return '<p class="result-count">' + items.length + ' exercise' + (items.length === 1 ? '' : 's') + '</p><div class="library-grid">' +
     items.map(item => {
       const omitted = excluded.has(item.id);
-      const done = Object.keys(used).some(scope => used[scope].used.includes(item.id));
       const label = omitted ? 'Restore' : 'Exclude';
       return '<article class="panel library-card">' + photo(item) + '<div class="library-card-body"><span class="tag">' +
         safe(item.muscle) + '</span><h2>' +
         safe(item.name) + '</h2><p>' + safe(item.pattern) + ' · ' + safe(item.gear.join(' + ')) + '</p>' +
-        (done ? '<small class="covered">' + icon('check', 14) + ' Completed this cycle</small>' : '') +
+        (covered.has(item.id) ? '<small class="covered">' + icon('check', 14) + ' Completed this cycle</small>' : '') +
+        exerciseStrength(cards?.[item.id]) +
         button(label + (omitted ? '<small class="routine-status">Excluded</small>' : ''),
           'exercise-preference', omitted ? 'plus' : 'minus', 'secondary compact routine-button' + (omitted ? ' is-excluded' : ''),
           'data-exercise-id="' + safe(item.id) + '" data-excluded="' + !omitted + '" aria-label="' +
@@ -437,7 +450,7 @@ function libraryGrid() {
 }
 const option = (value, text, current) => '<option value="' + safe(value) + '"' + (value === current ? ' selected' : '') + '>' + safe(text) + '</option>';
 function libraryPage() {
-  return title('Exercise Library', 'Browse your catalog and exclude exercises you want to leave out of future workouts.') +
+  return title('Exercise Library', 'See your strength progress and manage which exercises appear in future workouts.') +
     '<div class="filters"><label class="search-field">' + icon('search') +
     '<input id="search" type="search" aria-label="Search exercises" placeholder="Search exercises" value="' + safe(filters.search) + '"></label>' +
     '<select id="region" aria-label="Body region">' + option('', 'All body regions', filters.region) +
@@ -445,92 +458,175 @@ function libraryPage() {
     '<select id="equipment" aria-label="Equipment">' + option('', 'All equipment', filters.equipment) +
     gearOptions.map(gear => option(gear, gear, filters.equipment)).join('') + '</select><select id="routine" aria-label="Workout inclusion">' +
     option('', 'All routine statuses', filters.routine) + option('included', 'Included', filters.routine) +
-    option('excluded', 'Excluded', filters.routine) + '</select></div><div id="library-results">' + libraryGrid() + '</div>';
+    option('excluded', 'Excluded', filters.routine) + '</select><select id="sort" aria-label="Sort exercises">' +
+    option('', 'Catalog order', filters.sort) + option('highest', 'Highest improvement', filters.sort) +
+    option('lowest', 'Lowest improvement', filters.sort) + option('recent', 'Recently performed', filters.sort) +
+    '</select></div><div id="library-strength-status">' + (strengthError ? strengthStatus() : '') +
+    '</div><div id="library-results">' + libraryGrid() + '</div>';
 }
-const trendMeasures = {
-  weight: ['Working weight', 'kg'], kg: ['Estimated 1RM', 'kg'],
-  reps: ['Repetitions', 'reps'], seconds: ['Hold time', 'sec'],
-};
-const trendNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
-function trendAxis(values, fractional) {
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  const ideal = (high - low || Math.max(high * .15, 1)) / 3;
-  const scale = 10 ** Math.floor(Math.log10(ideal));
-  const step = Math.max(fractional ? .5 : 1, [1, 2, 5, 10].find(size => size * scale >= ideal) * scale);
-  const bottom = Math.max(0, Math.floor((low - step * .35) / step));
-  const top = Math.ceil((high + step * .35) / step);
-  const levels = Array.from({ length: top - bottom + 1 }, (_, index) => (top - index) * step);
-  const height = value => (top - value / step) / (top - bottom) * 100;
-  return { levels, height };
+const strengthNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+const strengthDay = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+const strengthDayWithYear = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
+});
+const strengthLabels = { overall: 'Overall Strength', upper: 'Upper Body', lower: 'Lower Body' };
+const strengthRanges = { all: 'All time', '30d': '30 days', '90d': '90 days', '1y': '1 year' };
+const strengthMethods = { estimate: 'Estimated max', matched: 'Matched reps', reps: 'Unweighted reps', hold: 'Hold time' };
+const changeTone = value => value > 0 ? 'gain' : value < 0 ? 'loss' : 'steady';
+const changeText = value => value == null ? '—' : (value > 0 ? '+' : '') + (value || 0).toFixed(1) + '%';
+const dayTimestamp = day => Date.parse(day + 'T00:00:00Z');
+const chartY = (value, min, max) => 3 + 94 * (max - value) / (max - min);
+
+function sparkline(points) {
+  if (points.length < 2) return '';
+  const values = points.map(([, change]) => change);
+  const min = Math.min(-1, ...values);
+  const max = Math.max(1, ...values);
+  const first = points[0][0];
+  const span = points.at(-1)[0] - first;
+  const y = value => 4 + (max - value) / (max - min) * 38;
+  const path = points.map(([time, value], index) =>
+    (2 + 96 * (span ? (time - first) / span : index / (points.length - 1))).toFixed(2) + ',' + y(value).toFixed(2)).join(' ');
+  return '<svg class="strength-sparkline" viewBox="0 0 100 46" preserveAspectRatio="none" aria-hidden="true">' +
+    '<line x1="2" x2="98" y1="' + y(0) + '" y2="' + y(0) + '" vector-effect="non-scaling-stroke"/>' +
+    '<polyline points="' + path + '" vector-effect="non-scaling-stroke"/></svg>';
 }
-function trendGraph(series, unit) {
-  const { levels, height } = trendAxis(series.map(point => point.value), unit === 'kg');
-  const datesAt = limit => {
-    const count = Math.min(series.length, limit);
-    return new Set(Array.from({ length: count }, (_, index) =>
-      count > 1 ? Math.round(index * (series.length - 1) / (count - 1)) : 0));
-  };
-  const dates = datesAt(5);
-  const compactDates = datesAt(3);
-  const points = series.map((point, index) => ({
-    ...point, x: series.length === 1 ? 50 : 4 + index * 92 / (series.length - 1), y: height(point.value),
-    label: dateShort(point.day) + ' · ' + workoutClock.format(point.finished) + ' · ' + trendNumber.format(point.value) + ' ' + unit,
-  }));
-  const selected = points[trendSelection] ? trendSelection : points.length - 1;
-  const path = points.map(point => point.x + ',' + point.y).join(' ');
-  const pointButtons = points.map(({ x, y, label }, index) =>
-    '<button type="button" class="trend-point" data-action="trend-point" data-index="' + index + '" style="--x:' + x +
-    '%;--y:' + y + '%" aria-pressed="' + (index === selected) + '" aria-label="' + safe(label) + '" title="' + safe(label) + '"></button>').join('');
-  const dateLabels = points.map(({ x, day }, index) => dates.has(index)
-    ? '<span class="' + (compactDates.has(index) ? '' : 'trend-extra-date') + '" style="--x:' + x + '%">' + dateShort(day) + '</span>' : '').join('');
-  return '<div class="trend-graph"><div class="trend-axis" aria-hidden="true">' + levels.map(value =>
-    '<span style="--y:' + height(value) + '%">' + trendNumber.format(value) + ' ' + unit + '</span>').join('') +
-    '</div><div class="trend-plot" role="group" aria-label="Progress by workout" style="--point-width:' +
-    (points.length > 1 ? 92 / (points.length - 1) + '%' : '34px') + '">' +
-    '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
-    levels.map(value => '<line x1="0" y1="' + height(value) + '" x2="100" y2="' + height(value) +
-      '" vector-effect="non-scaling-stroke"/>').join('') +
-    (points.length > 1 ? '<polyline points="' + path + '" vector-effect="non-scaling-stroke"/>' : '') +
-    '</svg>' + pointButtons + '</div><div class="trend-dates" aria-hidden="true">' + dateLabels + '</div></div>' +
-    '<p id="trend-reading" class="trend-reading" aria-live="polite">' + safe(points[selected].label) + '</p>';
-}
-function trends() {
-  if (!trendPoints?.length) {
-    return '<div class="empty">' + (trendPoints ? 'No completed sets for this exercise.' : 'Loading progression…') + '</div>';
+
+function exerciseStrength(card) {
+  const start = '<div class="exercise-strength"><div class="exercise-strength-heading"><span>Strength progress</span>';
+  if (!strengthData || !card) {
+    const status = strengthData ? 'Not performed yet' : strengthError ? 'Progress unavailable' : 'Loading progress…';
+    return start + '</div><p class="exercise-strength-status">' + status + '</p></div>';
   }
-  const metrics = Object.keys(trendMeasures).filter(metric => trendPoints.some(point => point.metric === metric));
-  if (!metrics.includes(trendMetric)) trendMetric = metrics[0];
-  let series = trendPoints.filter(point => point.metric === trendMetric);
-  const [measure, unit] = trendMeasures[trendMetric];
-  let repOptions = [];
-  if (trendMetric === 'weight') {
-    const appearances = new Map();
-    for (const point of [...series].reverse()) appearances.set(point.reps, (appearances.get(point.reps) || 0) + 1);
-    if (!appearances.has(trendReps)) trendReps = [...appearances].sort((a, b) => b[1] - a[1])[0][0];
-    repOptions = [...appearances.keys()].sort((a, b) => a - b);
-    series = series.filter(point => point.reps === trendReps);
-  }
-  const latest = series.at(-1).value;
-  const first = series[0].value;
-  const change = series.length > 1 && first > 0 ? Math.round((latest - first) / first * 1000) / 10 : null;
-  const controls = (metrics.length > 1 ? '<select id="metric" aria-label="Progress measurement">' +
-    metrics.map(metric => option(metric, trendMeasures[metric][0], trendMetric)).join('') + '</select>' : '') +
-    (repOptions.length > 1 ? '<select id="trend-reps" aria-label="Repetitions per set">' +
-      repOptions.map(reps => option(reps, reps + ' reps', trendReps)).join('') + '</select>' : '');
-  const comparison = change === null
-    ? (series.length === 1 ? '<span class="trend-baseline">First recorded workout</span>' : '')
-    : '<span class="trend-change' + (change > 0 ? ' gain' : change < 0 ? ' loss' : '') +
-      '" title="Change from the first workout shown">' + (change > 0 ? '+' : '') + change + '%</span>';
-  return (controls ? '<div class="trend-controls">' + controls + '</div>' : '') +
-    '<p class="trend-measure">' + measure + (trendMetric === 'weight' ? ' at ' + trendReps + ' repetitions' : '') + '</p>' +
-    '<div class="trend-summary"><strong>' + trendNumber.format(latest) + ' ' + unit + '</strong>' + comparison + '</div>' +
-    trendGraph(series, unit);
+  const { method, first, current, change, points } = card;
+  const comparison = change != null;
+  const pair = (initial, latest, unit) => strengthNumber.format(initial) +
+    (comparison ? ' → ' + strengthNumber.format(latest) : '') + ' ' + unit;
+  const effort = pair(first.reps, current.reps, method === 'hold' ? 'sec' : 'reps');
+  const loaded = first.kg > 0;
+  const title = comparison ? 'Initial to current comparable working set' : 'Initial working set';
+  return start + (comparison ? '<strong class="strength-change ' + changeTone(change) + '">' + changeText(change) + '</strong>' : '') +
+    '</div><div class="exercise-strength-set" title="' + title + '">' +
+    '<strong aria-label="' + title + ' ' + (loaded ? pair(first.kg, current.kg, 'kg') : effort) + '">' +
+    (loaded ? pair(first.kg, current.kg, 'kg') : effort) + '</strong>' +
+    '<small>' + (comparison ? (loaded ? effort + ' · ' : '') + strengthMethods[method] : 'Baseline established') + '</small>' +
+    (current.finished < card.lastPerformed ? '<small>Last comparable set ' + workoutDate.format(current.finished) + '</small>' : '') +
+    '</div><div class="strength-change ' + changeTone(change) + '">' + sparkline(points) + '</div></div>';
 }
+
+function strengthStatus() {
+  return strengthError
+    ? '<div class="strength-load empty" role="status"><span>Strength progress is unavailable.</span>' +
+      button('Retry', 'retry-strength', null, 'secondary compact') + '</div>'
+    : '<p class="empty" role="status">Loading strength progression…</p>';
+}
+
+function strengthReading(point) {
+  return '<strong>' + strengthDayWithYear.format(dayTimestamp(point.day)) + '</strong>' +
+    Object.entries(strengthLabels).map(([scope, name]) => '<span><i class="series-key ' + scope +
+      '" aria-hidden="true"></i>' + name + ' <b>' + changeText(point[scope]) + '</b></span>').join('');
+}
+
+function strengthChart(points) {
+  const timestamps = points.map(point => dayTimestamp(point.day));
+  const span = timestamps.at(-1) - timestamps[0];
+  const x = index => span ? 2 + 96 * (timestamps[index] - timestamps[0]) / span : 50;
+  const values = points.flatMap(point => Object.keys(strengthLabels).map(scope => point[scope] ?? 0));
+  const low = Math.min(0, ...values);
+  const high = Math.max(0, ...values);
+  const interval = Math.max(1, (high - low) / 4);
+  const scale = 10 ** Math.floor(Math.log10(interval));
+  const step = [1, 2, 5, 10].find(size => size * scale >= interval) * scale;
+  const min = low === high ? -step : Math.floor(low / step) * step;
+  const max = low === high ? step : Math.ceil(high / step) * step;
+  const ticks = Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => min + index * step);
+  const y = value => chartY(value, min, max);
+  const selected = strengthIndex ?? points.length - 1;
+  const path = Object.keys(strengthLabels).map(scope => {
+    const coordinates = points.flatMap((point, index) => point[scope] == null ? [] : [[x(index), y(point[scope])]]);
+    if (!coordinates.length) return '';
+    return '<polyline class="' + scope + '" points="' + coordinates.map(pair => pair.join(',')).join(' ') +
+      '" vector-effect="non-scaling-stroke"/>';
+  }).join('');
+  const dateCount = points.length === 1 ? 1 : span >= 2 * 86400000 ? 3 : 2;
+  const showYear = points[0].day.slice(0, 4) !== points.at(-1).day.slice(0, 4);
+  const dateLabels = Array.from({ length: dateCount }, (_, index) => {
+    const fraction = dateCount === 1 ? .5 : index / (dateCount - 1);
+    const time = timestamps[0] + Math.round(span / 86400000 * fraction) * 86400000;
+    return '<span style="--x:' + (2 + 96 * fraction) + '%">' +
+      (showYear ? strengthDayWithYear : strengthDay).format(time) + '</span>';
+  }).join('');
+  return '<div class="strength-chart"><div class="strength-axis" aria-hidden="true">' +
+    ticks.map(tick => '<span style="--y:' + y(tick) + '%">' + strengthNumber.format(tick) + '%</span>').join('') +
+    '</div><div class="strength-plot" tabindex="0" role="group" aria-label="Strength progression by date. Use arrow keys to explore."' +
+    ' data-min="' + min + '" data-max="' + max + '" style="--cursor:' + x(selected) +
+    '%"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
+    ticks.map(tick => '<line class="' + (tick === 0 ? 'baseline' : '') + '" x1="0" x2="100" y1="' + y(tick) +
+      '" y2="' + y(tick) + '" vector-effect="non-scaling-stroke"/>').join('') +
+    path + '</svg><span class="strength-cursor" aria-hidden="true"></span>' +
+    Object.keys(strengthLabels).map(scope => '<i class="strength-marker ' + scope + '"' +
+      (points[selected][scope] == null ? ' hidden' : ' style="--y:' + y(points[selected][scope]) + '%"') + '></i>').join('') +
+    '</div><div class="strength-dates" aria-hidden="true">' + dateLabels + '</div></div>' +
+    '<div class="strength-reading" aria-live="polite">' + strengthReading(points[selected]) + '</div>';
+}
+
+function selectStrengthPoint(plot, points, index) {
+  if ((strengthIndex ?? points.length - 1) === index) return;
+  strengthIndex = index;
+  const point = points[index];
+  const first = dayTimestamp(points[0].day);
+  const span = dayTimestamp(points.at(-1).day) - first;
+  const x = span ? 2 + 96 * (dayTimestamp(point.day) - first) / span : 50;
+  plot.style.setProperty('--cursor', x + '%');
+  for (const scope of Object.keys(strengthLabels)) {
+    const marker = plot.querySelector('.strength-marker.' + scope);
+    marker.hidden = point[scope] == null;
+    if (!marker.hidden) marker.style.setProperty('--y', chartY(point[scope], Number(plot.dataset.min), Number(plot.dataset.max)) + '%');
+  }
+  plot.closest('.strength-chart').nextElementSibling.innerHTML = strengthReading(point);
+}
+
+function selectStrengthDate(event) {
+  const plot = event.target.closest('.strength-plot');
+  if (!plot) return;
+  const points = strengthData.ranges[strengthRange].points;
+  const { left, width } = plot.getBoundingClientRect();
+  const first = dayTimestamp(points[0].day);
+  const span = dayTimestamp(points.at(-1).day) - first;
+  const time = first + ((event.clientX - left) / width - .02) / .96 * span;
+  let nearest = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (Math.abs(dayTimestamp(points[i].day) - time) < Math.abs(dayTimestamp(points[nearest].day) - time)) nearest = i;
+  }
+  selectStrengthPoint(plot, points, nearest);
+}
+
+function strengthContent() {
+  if (!strengthData) return strengthStatus();
+  const { points, counts, improved, latest } = strengthData.ranges[strengthRange];
+  if (!latest) {
+    const performed = Object.keys(strengthData.cards).length > 0;
+    const message = !performed ? 'Complete workouts to establish your strength baselines.' : strengthRange === 'all'
+      ? 'Log another comparable workout to start seeing your strength progression.'
+      : 'No comparable workouts in this range. Try a longer range.';
+    return '<p class="empty" role="status">' + message + '</p>';
+  }
+  return '<div class="strength-headline"><strong class="strength-change ' + changeTone(latest.overall) + '">' +
+    changeText(latest.overall) + '</strong><span>Average change from baseline</span></div>' +
+    strengthChart(points) + '<dl class="strength-stats">' +
+    ['upper', 'lower'].map(scope => '<div><dt>' + strengthLabels[scope] + '</dt><dd class="strength-change ' +
+      changeTone(latest[scope]) + '">' + changeText(latest[scope]) + '</dd></div>').join('') +
+    '<div><dt>Exercises improved</dt><dd>' + improved + ' / ' + counts.overall + '</dd></div></dl>' +
+    '<details class="strength-method"><summary>How strength is measured</summary>' +
+    '<p>Each exercise contributes equally. The baseline is the last comparable workout before the range, or the first within it. ' +
+    'The chart uses the same exercises throughout the range and carries their last measured change between workouts. ' +
+    'An exercise begins contributing changes when it has a repeat measurement. Core exercises count toward Overall Strength.</p>' +
+    '<p>We compare the best set per workout using an estimated max for loaded sets of 1–12 reps. ' +
+    'Higher-rep sets are compared at the same rep count, unweighted sets by reps, and timed holds at the same load.</p></details>';
+}
+
 function progressPage() {
   const { records } = data.progress;
-  const ids = [...new Set(records.map(record => record.exercise))];
-  if (!ids.includes(trendId)) trendId = ids[0];
   const prs = records.map(record => {
     const exercise = exercises.get(record.exercise);
     return '<div class="record"><span><strong>' + safe(exercise.name) + '</strong><small>' +
@@ -539,9 +635,11 @@ function progressPage() {
   }).join('');
   return title('Progress', 'Track strength gains and personal records.') +
     '<div class="dashboard"><div class="dashboard-main"><section class="panel widget progression"><div class="widget-title"><span class="icon-box">' +
-    icon('progress') + '</span><h2>Strength progression</h2></div>' +
-    (ids.length ? '<select id="trend" aria-label="Exercise progression">' + ids.map(id => option(id, exercises.get(id).name, trendId)).join('') +
-      '</select><div id="trend-content">' + trends() + '</div>' : '<div class="empty">Complete your first workout to see your strength trend.</div>') +
+    icon('progress') + '</span><h2>Overall strength progression</h2></div>' +
+    '<div class="strength-ranges" role="group" aria-label="Strength progression time range">' +
+    Object.entries(strengthRanges).map(([range, label]) => '<button type="button" data-action="strength-range" data-range="' +
+      range + '" aria-pressed="' + (range === strengthRange) + '">' + label + '</button>').join('') +
+    '</div><div id="strength-content">' + strengthContent() + '</div>' +
     '</section></div><aside class="dashboard-side">' + rotationCard() +
     '<section class="panel widget"><div class="widget-title"><span class="icon-box">' + icon('trophy') +
     '</span><h2>Personal records</h2></div>' + (prs || '<div class="empty">Log a workout to set your first baseline.</div>') +
@@ -594,7 +692,7 @@ function settingsPage() {
 function recapPanel(result) {
   return '<div class="summary-metrics"><div><strong>' + duration(result.duration) + '</strong><span>Duration</span></div><div><strong>' +
     result.count + '</strong><span>Exercises</span></div><div><strong>' + result.sets + '</strong><span>Sets logged</span></div></div>' +
-    '<div class="summary-timing">' + icon('clock', 18) + '<div>' + workoutTiming(result) + '<small>Jerusalem time</small></div></div>' +
+    '<div class="summary-timing">' + workoutTiming(result) + '<small>Jerusalem time</small></div>' +
     '<h3>Achievements</h3>' + (result.achievements.length ? result.achievements.map(item =>
       '<div class="record"><span><strong>' + safe(exercises.get(item.id)?.name || item.id) + '</strong><small>' + safe(item.kind) +
       '</small></span><strong>' + (item.gain === null ? 'First log' : '+' + item.gain + ' ' + safe(item.unit)) + '</strong></div>').join('') :
@@ -634,24 +732,38 @@ function render() {
     wireTraining();
   } else if (data.pending) app.innerHTML = preview(data.pending);
   else app.innerHTML = home();
-  if (view === 'progress' && trendId && !trendPoints) void loadTrend();
+  if (view === 'progress' || view === 'library') void loadStrength();
 }
-async function loadTrend() {
-  const request = ++trendRequest;
+async function loadStrength() {
+  if (strengthData || strengthRequest || strengthError) return;
+  const request = api('strength');
+  strengthRequest = request;
   try {
-    const points = await api('trend/' + trendId);
-    if (request !== trendRequest) return;
-    trendPoints = points;
-    const content = document.querySelector('#trend-content');
-    if (content) content.innerHTML = trends();
-  } catch (error) { notify(error.message); }
+    const result = await request;
+    if (request !== strengthRequest) return;
+    strengthData = result;
+  } catch (error) {
+    if (request !== strengthRequest) return;
+    strengthError = error;
+  }
+  strengthRequest = undefined;
+  const chart = document.querySelector('#strength-content');
+  if (chart) chart.innerHTML = strengthContent();
+  const grid = document.querySelector('#library-results');
+  if (grid) {
+    grid.innerHTML = libraryGrid();
+    document.querySelector('#library-strength-status').innerHTML = strengthError ? strengthStatus() : '';
+  }
+}
+function clearStrength() {
+  strengthData = strengthRequest = strengthError = strengthIndex = undefined;
 }
 async function mutation(path, body) {
   data = await api(path, body);
   if (data.summary) {
     recap = data.summary;
     selectedKind = undefined;
-    trendPoints = undefined;
+    clearStrength();
   }
   render();
   if (data.weeklyGoalReached) showWeeklyGoal(data.progress.weeklyGoal.streak);
@@ -670,11 +782,18 @@ document.addEventListener('click', async event => {
     return;
   }
   if (action === 'close') { dialog.close(); return; }
-  if (action === 'trend-point') {
-    control.closest('.trend-plot').querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false');
+  if (action === 'strength-range') {
+    if (strengthRange === control.dataset.range) return;
+    strengthRange = control.dataset.range;
+    strengthIndex = undefined;
+    control.parentElement.querySelector('[aria-pressed="true"]').setAttribute('aria-pressed', 'false');
     control.setAttribute('aria-pressed', 'true');
-    trendSelection = Number(control.dataset.index);
-    document.querySelector('#trend-reading').textContent = control.getAttribute('aria-label');
+    document.querySelector('#strength-content').innerHTML = strengthContent();
+    return;
+  }
+  if (action === 'retry-strength') {
+    strengthError = undefined;
+    render();
     return;
   }
   if (action === 'view-photo') {
@@ -723,8 +842,7 @@ document.addEventListener('click', async event => {
       data = await api('reset-data', { confirm: true });
       recap = undefined;
       selectedKind = undefined;
-      trendPoints = undefined;
-      trendRequest++;
+      clearStrength();
       dialog.close();
       render();
       document.querySelector('[data-action="confirm-reset-data"]')?.focus({ preventScroll: true });
@@ -786,6 +904,19 @@ document.addEventListener('click', async event => {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) checkRestAlarm();
 });
+app.addEventListener('click', selectStrengthDate);
+app.addEventListener('pointermove', event => {
+  if (event.pointerType === 'mouse') selectStrengthDate(event);
+});
+app.addEventListener('keydown', event => {
+  if (!event.target.matches('.strength-plot') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const points = strengthData.ranges[strengthRange].points;
+  const last = points.length - 1;
+  const current = strengthIndex ?? last;
+  const byKey = { ArrowLeft: Math.max(0, current - 1), ArrowRight: Math.min(last, current + 1), Home: 0, End: last };
+  selectStrengthPoint(event.target, points, byKey[event.key]);
+});
 document.addEventListener('input', event => {
   if (event.target.id !== 'search') return;
   filters.search = event.target.value;
@@ -793,22 +924,9 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('change', event => {
   const { id, value } = event.target;
-  if (id === 'equipment' || id === 'region' || id === 'routine') {
+  if (['equipment', 'region', 'routine', 'sort'].includes(id)) {
     filters[id] = value;
     document.querySelector('#library-results').innerHTML = libraryGrid();
-  }
-  if (id === 'trend') {
-    trendId = value;
-    trendPoints = trendMetric = trendReps = trendSelection = undefined;
-    render();
-    document.querySelector('#trend')?.focus({ preventScroll: true });
-  }
-  if (id === 'metric' || id === 'trend-reps') {
-    if (id === 'metric') trendMetric = value;
-    else trendReps = Number(value);
-    trendSelection = undefined;
-    document.querySelector('#trend-content').innerHTML = trends();
-    document.getElementById(id)?.focus({ preventScroll: true });
   }
 });
 document.addEventListener('submit', async event => {

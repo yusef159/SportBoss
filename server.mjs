@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { byId, catalog, equipment, kinds, swapPrescription } from './lib/catalog.mjs';
 import { candidates, durationOptions, selectPlan, swapOptions } from './lib/planner.mjs';
 import { startReminders } from './reminders.mjs';
+import { strengthProgression } from './lib/strength-progression.mjs';
 import {
   awardWeeklyGoal, completedWorkouts, describeWorkout, exerciseTrend, getSettings, openDatabase,
   overview, pendingWorkout, saveSettings, summary, transaction, workoutById,
@@ -54,6 +55,7 @@ async function api(db, request, path, typesafeKey, appState) {
   if (request.method === 'GET') {
     if (path === '/api/overview') return overview(db);
     if (path === '/api/catalog') return catalog;
+    if (path === '/api/strength') return strengthProgression(db);
     if (path.startsWith('/api/trend/')) {
       const id = path.slice('/api/trend/'.length);
       if (!byId.has(id)) fail('Exercise not found.', 404);

@@ -7,6 +7,7 @@ import test from 'node:test';
 import { byId, catalog, eligible, equipment } from '../lib/catalog.mjs';
 import { candidates, defaults, durationOptions, estimatedWorkoutMinutes, rotation, selectPlan, swapOptions } from '../lib/planner.mjs';
 import { awardWeeklyGoal, describeWorkout, exerciseTrend, localTime, openDatabase, overview, saveSettings } from '../lib/storage.mjs';
+import { strengthProgression } from '../lib/strength-progression.mjs';
 import { createApp } from '../server.mjs';
 import { sendDueReminder } from '../reminders.mjs';
 
@@ -255,6 +256,58 @@ test('the working-weight trend uses the best logged weight for each rep count pe
   assert.equal(at12[0].day, at12[1].day);
   assert.equal(history.find(point => point.metric === 'weight' && point.reps === 8).value, 24);
   assert.equal(history.filter(point => point.metric === 'kg').length, 2);
+});
+
+test('strength progression keeps a fixed comparison group through rotation and uses prior sets at range boundaries', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'sportboss-strength-'));
+  const db = openDatabase(directory);
+  t.after(async () => { db.close(); await rm(directory, { recursive: true, force: true }); });
+  const addWorkout = db.prepare("INSERT INTO workouts(kind,plan,source,started,finished) VALUES('full','[]','rules',?,?)");
+  const addSet = db.prepare('INSERT INTO sets VALUES(?, ?, ?, ?, ?)');
+  const time = day => Date.parse(day + 'T12:00:00Z');
+  const bench = 'flat-dumbbell-bench-press';
+  const squat = 'goblet-squat';
+  const incline = 'incline-dumbbell-bench-press';
+  const plank = 'side-plank';
+  const hold = 'dumbbell-static-hold';
+  const row = 'alternating-dumbbell-row';
+  const pushup = 'standard-push-up';
+  function workout(day, ...sets) {
+    const finished = day && time(day);
+    const id = addWorkout.run((finished ?? time('2026-11-27')) - 60000, finished).lastInsertRowid;
+    sets.forEach((set, ordinal) => addSet.run(id, ordinal, ...set));
+  }
+  workout('2026-10-01', [bench, 10, 11], [bench, 9, 10], [squat, 20, 8], [hold, 8, 30], [row, 8, 15]);
+  workout('2026-10-17', [bench, 12, 1], [squat, 18, 8], [hold, 10, 40], [row, 10, 18], [pushup, 0, 10]);
+  workout('2026-11-02', [bench, 12.5, 11], [plank, 0, 30]);
+  workout('2026-11-09', [incline, 10, 11]);
+  workout('2026-11-16', [squat, 16, 8], [pushup, 0, 11]);
+  workout('2026-11-23', [incline, 10, 11], [bench, 40, 20]);
+  workout('2026-12-01', [squat, 100, 8]);
+  workout(null, [bench, 100, 11]);
+  const now = time('2026-11-27');
+  const { cards, ranges } = strengthProgression(db, now);
+  assert.equal(cards[bench].change, 25);
+  assert.deepEqual(cards[bench].first, { kg: 10, reps: 11 });
+  assert.deepEqual(cards[bench].current, { kg: 12.5, reps: 11, finished: time('2026-11-02') });
+  assert.equal(cards[bench].lastPerformed, time('2026-11-23'));
+  assert.equal(cards[hold].change, null);
+  assert.equal(cards[row].change, null);
+  assert.equal(cards[plank].change, null);
+  assert.equal(cards[incline].change, 0);
+  assert.equal(cards[squat].change, -20);
+  assert.equal(cards[pushup].change, 10);
+  assert.deepEqual(ranges.all.counts, { overall: 4, upper: 3, lower: 1 });
+  assert.equal(ranges.all.improved, 2);
+  assert.deepEqual(ranges.all.latest, { day: '2026-11-23', overall: 3.8, upper: 11.7, lower: -20 });
+  const withNewExercise = ranges.all.points.findIndex(point => point.day === '2026-11-09');
+  const { day, ...then } = ranges.all.points[withNewExercise];
+  const { day: previousDay, ...before } = ranges.all.points[withNewExercise - 1];
+  assert.deepEqual(then, before);
+  assert.equal(ranges['30d'].points[0].day, '2026-10-29');
+  assert.deepEqual(ranges['30d'].latest, { day: '2026-11-23', overall: 9.4, upper: 16.3, lower: -11.1 });
+  saveSettings(db, { ...defaults, excluded: [bench], gear: ['Bodyweight'] });
+  assert.deepEqual(strengthProgression(db, now), { cards, ranges });
 });
 
 test('reminders send once per scheduled Jerusalem day and skip completed days', async t => {
@@ -528,6 +581,10 @@ test('workout API persists preview, sets, rest, history, and metrics across rest
   assert.equal(result.recommendation, builds[0][1].pending.kind === 'upper' ? 'lower' : 'upper');
   const [ , points] = await request('/api/trend/' + firstExercise);
   assert.ok(points.length);
+  const [strengthStatus, strength] = await request('/api/strength');
+  assert.equal(strengthStatus, 200);
+  assert.equal(strength.cards[firstExercise].change, null);
+  assert.equal(strength.ranges.all.latest, null);
   const [ , detail] = await request('/api/workout/' + id);
   assert.deepEqual(detail, result.summary);
   assert.ok(detail.started <= detail.finished);
